@@ -3,6 +3,8 @@ const API = configuredApiUrl
   ? configuredApiUrl.endsWith("/api")
     ? configuredApiUrl
     : `${configuredApiUrl}/api`
+  : import.meta.env.PROD
+  ? "/api"
   : "http://localhost:4000/api";
 export const SERVER_ORIGIN = API.replace(/\/api\/?$/, "");
 
@@ -37,6 +39,7 @@ export function getUser() {
 export function getAssetUrl(path) {
   if (!path) return "";
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (!SERVER_ORIGIN) return path;
   return `${SERVER_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 

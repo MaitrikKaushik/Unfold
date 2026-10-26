@@ -1,29 +1,17 @@
 services:
   - type: web
-    name: unfold-api
-    runtime: node
+    name: unfold-backend
+    env: node
+    plan: free
     rootDir: server
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node src/server.js
     envVars:
+      - key: PORT
+        value: 10000
       - key: JWT_SECRET
         generateValue: true
       - key: POST_THRESHOLD
-        value: "5"
+        value: 5
       - key: CLIENT_ORIGIN
-        fromService:
-          type: static
-          name: unfold-client
-          property: host
-
-  - type: static
-    name: unfold-client
-    rootDir: client
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: unfold-api
-          property: host
+        value: "*"
