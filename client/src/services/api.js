@@ -1,4 +1,9 @@
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
+const API = configuredApiUrl
+  ? configuredApiUrl.endsWith("/api")
+    ? configuredApiUrl
+    : `${configuredApiUrl}/api`
+  : "http://localhost:4000/api";
 export const SERVER_ORIGIN = API.replace(/\/api\/?$/, "");
 
 export function getToken() {
