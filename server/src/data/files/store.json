@@ -39,6 +39,20 @@
       "communityId": "technology",
       "status": "active",
       "joinedAt": "2026-10-26T14:30:29.272Z"
+    },
+    {
+      "id": "8c17a09f-9bf6-4e6a-8e4f-4f22d3943c5d",
+      "userId": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
+      "communityId": "technology",
+      "status": "active",
+      "joinedAt": "2026-10-26T17:47:23.077Z"
+    },
+    {
+      "id": "5a0e0819-32eb-4788-ae1f-a32bbdeee1e4",
+      "userId": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
+      "communityId": "gaming",
+      "status": "active",
+      "joinedAt": "2026-10-26T17:47:42.810Z"
     }
   ],
   "posts": [
@@ -49,20 +63,11 @@
       "text": "",
       "imageUrl": "/uploads/67ef2e75e93db34d0b94924259c63698",
       "upvoteCount": 0,
-      "downvoteCount": 1,
+      "downvoteCount": 0,
       "status": "active",
       "createdAt": "2026-10-26T14:30:39.918Z"
     }
   ],
-  "votes": [
-    {
-      "id": "cfdea8e2-572e-49db-893b-0db1e06a5cf5",
-      "postId": "522edd04-b2f1-4399-871f-0c4d3698f0ad",
-      "userId": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
-      "value": -1,
-      "createdAt": "2026-10-26T17:10:25.503Z",
-      "updatedAt": "2026-10-26T17:10:25.503Z"
-    }
-  ],
+  "votes": [],
   "comments": []
 }
