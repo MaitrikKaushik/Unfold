@@ -1,0 +1,51 @@
+{
+  "users": [
+    {
+      "id": "18482840-6a8d-4a69-a972-9d94c78e8237",
+      "username": "kaushik_m41",
+      "email": "maitrik@gmail.com",
+      "passwordHash": "$2a$10$cvuSLKN4kLvQ3JBamxx8EunwyPG0wB4LPPObtSlPo5RfJuwdGCrpW",
+      "createdAt": "2026-10-26T14:30:11.492Z"
+    }
+  ],
+  "communities": [
+    {
+      "id": "technology",
+      "name": "Technology",
+      "description": "Technology, products, and ideas."
+    },
+    {
+      "id": "programming",
+      "name": "Programming",
+      "description": "Code, tools, and software engineering."
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming",
+      "description": "Games, studios, and gaming culture."
+    }
+  ],
+  "memberships": [
+    {
+      "id": "9cd4c520-2a1c-4efa-8ba0-92690ea6303e",
+      "userId": "18482840-6a8d-4a69-a972-9d94c78e8237",
+      "communityId": "technology",
+      "status": "active",
+      "joinedAt": "2026-10-26T14:30:29.272Z"
+    }
+  ],
+  "posts": [
+    {
+      "id": "522edd04-b2f1-4399-871f-0c4d3698f0ad",
+      "authorId": "18482840-6a8d-4a69-a972-9d94c78e8237",
+      "communityId": "technology",
+      "text": "",
+      "imageUrl": "/uploads/67ef2e75e93db34d0b94924259c63698",
+      "upvoteCount": 0,
+      "downvoteCount": 0,
+      "status": "active",
+      "createdAt": "2026-10-26T14:30:39.918Z"
+    }
+  ],
+  "votes": []
+}

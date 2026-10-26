@@ -1,0 +1,23 @@
+{
+  "users": [],
+  "communities": [
+    {
+      "id": "technology",
+      "name": "Technology",
+      "description": "Technology, products, and ideas."
+    },
+    {
+      "id": "programming",
+      "name": "Programming",
+      "description": "Code, tools, and software engineering."
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming",
+      "description": "Games, studios, and gaming culture."
+    }
+  ],
+  "memberships": [],
+  "posts": [],
+  "votes": []
+}
