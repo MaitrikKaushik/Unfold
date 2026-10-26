@@ -14,12 +14,13 @@ const app = express();
 const port = Number(process.env.PORT || 4000);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.resolve(here, "../uploads");
+const clientOrigin = (process.env.CLIENT_ORIGIN || "http://localhost:5173").replace(/\/+$/, "");
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
+app.use(cors({ origin: clientOrigin }));
 app.use(express.json({ limit: "100kb" }));
 app.use("/uploads", express.static(uploadsDir));
 app.get("/api/health", (_req, res) => res.json({ status: "ok", app: "Unfold" }));
