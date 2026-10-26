@@ -6,6 +6,13 @@
       "email": "maitrik@gmail.com",
       "passwordHash": "$2a$10$cvuSLKN4kLvQ3JBamxx8EunwyPG0wB4LPPObtSlPo5RfJuwdGCrpW",
       "createdAt": "2026-10-26T14:30:11.492Z"
+    },
+    {
+      "id": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
+      "username": "MilanSingla",
+      "email": "milansingla15@gmail.com",
+      "passwordHash": "$2a$10$yut0eApMdtOrC654wW2JjuQHDNfLZAo3yom.C5FP9dRi8Qy1XBzIm",
+      "createdAt": "2026-10-26T17:02:58.737Z"
     }
   ],
   "communities": [
@@ -32,6 +39,20 @@
       "communityId": "technology",
       "status": "active",
       "joinedAt": "2026-10-26T14:30:29.272Z"
+    },
+    {
+      "id": "8c17a09f-9bf6-4e6a-8e4f-4f22d3943c5d",
+      "userId": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
+      "communityId": "technology",
+      "status": "active",
+      "joinedAt": "2026-10-26T17:47:23.077Z"
+    },
+    {
+      "id": "5a0e0819-32eb-4788-ae1f-a32bbdeee1e4",
+      "userId": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
+      "communityId": "gaming",
+      "status": "active",
+      "joinedAt": "2026-10-26T17:47:42.810Z"
     }
   ],
   "posts": [
@@ -47,5 +68,6 @@
       "createdAt": "2026-10-26T14:30:39.918Z"
     }
   ],
-  "votes": []
+  "votes": [],
+  "comments": []
 }

@@ -1,11 +1,12 @@
 {
-  "name": "commonground-server",
+  "name": "unfold-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "test": "node test-suite.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -16,13 +16,22 @@ const initial = () => ({
   ],
   memberships: [],
   posts: [],
-  votes: []
+  votes: [],
+  comments: []
 });
 
 export async function readStore() {
   await fs.mkdir(dataDir, { recursive: true });
   try {
-    return JSON.parse(await fs.readFile(storePath, "utf8"));
+    const raw = await fs.readFile(storePath, "utf8");
+    const data = JSON.parse(raw);
+    data.users = data.users || [];
+    data.communities = data.communities || [];
+    data.memberships = data.memberships || [];
+    data.posts = data.posts || [];
+    data.votes = data.votes || [];
+    data.comments = data.comments || [];
+    return data;
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
     const data = initial();
