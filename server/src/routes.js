@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readStore, writeStore, id, now } from "./data/store.js";
@@ -29,6 +30,7 @@ const ALLOWED_CATEGORIES = ["Discussion", "Question", "Resource"];
 const publicUser = (u) => ({
   id: u.id,
   username: u.username,
+  bio: u.bio || "",
   createdAt: u.createdAt
 });
 
@@ -50,7 +52,8 @@ const publicPost = (p, store, viewerId) => {
     score: upvotes - downvotes,
     commentCount: commentsForPost.length,
     myVote: (store.votes || []).find((v) => v.postId === p.id && v.userId === viewerId)?.value || 0,
-    createdAt: p.createdAt
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt || null
   };
 };
 
@@ -75,7 +78,7 @@ function optionalAuth(req, _res, next) {
   next();
 }
 
-// ----------------- Authentication Routes -----------------
+// ----------------- Authentication & Profile Routes -----------------
 
 router.post("/auth/register", asyncRoute(async (req, res) => {
   const username = String(req.body.username || "").trim();
@@ -101,6 +104,7 @@ router.post("/auth/register", asyncRoute(async (req, res) => {
     id: id(),
     username,
     email,
+    bio: "",
     passwordHash: await bcrypt.hash(password, 10),
     createdAt: now()
   };
@@ -108,7 +112,10 @@ router.post("/auth/register", asyncRoute(async (req, res) => {
   await writeStore(store);
 
   const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.status(201).json({ token, user: publicUser(user) });
+  res.status(201).json({
+    token,
+    user: { id: user.id, username: user.username, email: user.email, bio: "", createdAt: user.createdAt }
+  });
 }));
 
 router.post("/auth/login", asyncRoute(async (req, res) => {
@@ -126,14 +133,58 @@ router.post("/auth/login", asyncRoute(async (req, res) => {
   }
 
   const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.json({ token, user: publicUser(user) });
+  res.json({
+    token,
+    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt }
+  });
 }));
 
 router.get("/auth/me", requireAuth, asyncRoute(async (req, res) => {
   const store = await readStore();
   const user = store.users.find((u) => u.id === req.user.id);
   if (!user) return fail(res, 404, "USER_NOT_FOUND", "User not found.");
-  res.json({ user: publicUser(user) });
+  res.json({
+    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt }
+  });
+}));
+
+router.patch("/auth/profile", requireAuth, asyncRoute(async (req, res) => {
+  const store = await readStore();
+  const user = store.users.find((u) => u.id === req.user.id);
+  if (!user) return fail(res, 404, "USER_NOT_FOUND", "User not found.");
+
+  const username = req.body.username !== undefined ? String(req.body.username).trim() : null;
+  const bio = req.body.bio !== undefined ? String(req.body.bio).trim() : null;
+
+  if (username !== null) {
+    if (username.length < 3 || username.length > 24 || !/^[a-zA-Z0-9_]+$/.test(username)) {
+      return fail(res, 400, "INVALID_USERNAME", "Username must be 3–24 characters and use letters, numbers, or underscores.");
+    }
+    const conflict = store.users.find(
+      (u) => u.id !== user.id && u.username.toLowerCase() === username.toLowerCase()
+    );
+    if (conflict) {
+      return fail(res, 409, "USERNAME_TAKEN", "That username is already taken.");
+    }
+    user.username = username;
+  }
+
+  if (bio !== null) {
+    if (bio.length > 250) {
+      return fail(res, 400, "BIO_TOO_LONG", "Bio must be 250 characters or fewer.");
+    }
+    user.bio = bio;
+  }
+
+  user.updatedAt = now();
+  await writeStore(store);
+
+  const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  res.json({
+    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt },
+    token,
+    message: "Profile updated successfully."
+  });
 }));
 
 // ----------------- Community Routes -----------------
@@ -262,6 +313,115 @@ router.post("/communities/:id/posts", requireAuth, upload.single("image"), async
   await writeStore(store);
 
   res.status(201).json({ post: publicPost(post, store, req.user.id) });
+}));
+
+// Update a post (PATCH /api/posts/:id)
+router.patch("/posts/:id", requireAuth, upload.single("image"), asyncRoute(async (req, res) => {
+  const store = await readStore();
+  const post = store.posts.find((p) => p.id === req.params.id && p.status === "active");
+  if (!post) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
+
+  // Verify ownership
+  if (post.authorId !== req.user.id) {
+    return fail(res, 403, "FORBIDDEN", "You can only edit your own posts.");
+  }
+
+  const title = req.body.title !== undefined ? String(req.body.title).trim() : post.title;
+  const text = req.body.text !== undefined ? String(req.body.text).trim() : post.text;
+  let category = req.body.category !== undefined ? String(req.body.category).trim() : post.category;
+  if (!ALLOWED_CATEGORIES.includes(category)) {
+    category = "Discussion";
+  }
+
+  let link = req.body.link !== undefined ? String(req.body.link).trim() : (post.link || "");
+  if (link) {
+    if (link.length > 500) {
+      return fail(res, 400, "LINK_TOO_LONG", "Resource URL must be 500 characters or fewer.");
+    }
+    if (!/^https?:\/\//i.test(link)) {
+      link = `https://${link}`;
+    }
+  } else {
+    link = null;
+  }
+
+  if (title && title.length > 150) {
+    return fail(res, 400, "TITLE_TOO_LONG", "Post title must be 150 characters or fewer.");
+  }
+  if (text && text.length > 2000) {
+    return fail(res, 400, "POST_TOO_LONG", "Post text must be 2,000 characters or fewer.");
+  }
+
+  const removeImage = String(req.body.removeImage || "").toLowerCase() === "true";
+  const oldImageUrl = post.imageUrl;
+
+  if (req.file) {
+    post.imageUrl = `/uploads/${req.file.filename}`;
+  } else if (removeImage) {
+    post.imageUrl = null;
+  }
+
+  // Safely clean up old image if replaced or removed, checking if any other post references it
+  if (oldImageUrl && (req.file || removeImage)) {
+    const isShared = store.posts.some((p) => p.id !== post.id && p.imageUrl === oldImageUrl);
+    if (!isShared && oldImageUrl.startsWith("/uploads/")) {
+      const filename = path.basename(oldImageUrl);
+      fs.promises.unlink(path.join(uploadDir, filename)).catch(() => {});
+    }
+  }
+
+  if (!text && !title && !post.imageUrl) {
+    return fail(res, 400, "EMPTY_POST", "Post must have a title, text, or an image.");
+  }
+
+  post.title = title || null;
+  post.text = text || "";
+  post.category = category;
+  post.link = category === "Resource" || link ? link : null;
+  post.updatedAt = now();
+
+  await writeStore(store);
+
+  res.json({
+    post: publicPost(post, store, req.user.id),
+    message: "Post updated successfully."
+  });
+}));
+
+// Delete a post (DELETE /api/posts/:id)
+router.delete("/posts/:id", requireAuth, asyncRoute(async (req, res) => {
+  const store = await readStore();
+  const postIndex = store.posts.findIndex((p) => p.id === req.params.id && p.status === "active");
+  if (postIndex === -1) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
+
+  const post = store.posts[postIndex];
+
+  // Verify ownership
+  if (post.authorId !== req.user.id) {
+    return fail(res, 403, "FORBIDDEN", "You can only delete your own posts.");
+  }
+
+  // Safely delete image if not referenced by another post
+  if (post.imageUrl && post.imageUrl.startsWith("/uploads/")) {
+    const isShared = store.posts.some((p) => p.id !== post.id && p.imageUrl === post.imageUrl);
+    if (!isShared) {
+      const filename = path.basename(post.imageUrl);
+      fs.promises.unlink(path.join(uploadDir, filename)).catch(() => {});
+    }
+  }
+
+  // Remove associated comments and votes
+  store.comments = (store.comments || []).filter((c) => c.postId !== post.id);
+  store.votes = (store.votes || []).filter((v) => v.postId !== post.id);
+
+  // Remove post from store
+  store.posts.splice(postIndex, 1);
+  await writeStore(store);
+
+  res.json({
+    message: "Post deleted successfully.",
+    postId: req.params.id
+  });
 }));
 
 // ----------------- Voting Routes -----------------

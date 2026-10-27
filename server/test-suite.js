@@ -363,10 +363,85 @@ async function runTests() {
     assert(topFeed.posts[0].id === gatePostId, "Top sort places highest scored post (+5) first");
     assert(topFeed.posts[0].score >= topFeed.posts[1].score, "Posts ordered descending by net vote score");
 
-    // ---------------- Test 9: Persistence Verification ----------------
-    console.log("\n--- Test 9: Persistence Verification ---");
+    // ---------------- Test 9: Edit Post (PATCH /api/posts/:id) ----------------
+    console.log("\n--- Test 9: Edit Post (PATCH /api/posts/:id) ---");
+    // Voter 1 attempts to edit Alice's post -> 403 Forbidden
+    const unauthEditRes = await makeRequest("PATCH", `/api/posts/${secondPostId}`, {
+      headers: { Authorization: `Bearer ${voterTokens[0]}` },
+      body: { title: "Hacked Title", text: "Hacked Content" }
+    });
+    assert(unauthEditRes.status === 403, "Prevents other users from editing post with 403 Forbidden");
+
+    // Alice edits her own post
+    const authEditRes = await makeRequest("PATCH", `/api/posts/${secondPostId}`, {
+      headers: { Authorization: `Bearer ${authorToken}` },
+      body: {
+        title: "Express Middleware Insights (Updated)",
+        text: "Updated text with additional architectural best practices.",
+        category: "Question"
+      }
+    });
+    const editData = await authEditRes.json();
+    assert(authEditRes.status === 200, "Author successfully edits post with 200 OK");
+    assert(editData.post.title === "Express Middleware Insights (Updated)", "Updated title persists");
+    assert(editData.post.category === "Question", "Updated category persists");
+    assert(editData.post.author.id === authorId, "Author identity preserved");
+
+    // ---------------- Test 10: Delete Post (DELETE /api/posts/:id) ----------------
+    console.log("\n--- Test 10: Delete Post (DELETE /api/posts/:id) ---");
+    // Voter 1 attempts to delete Alice's post -> 403 Forbidden
+    const unauthPostDeleteRes = await makeRequest("DELETE", `/api/posts/${secondPostId}`, {
+      headers: { Authorization: `Bearer ${voterTokens[0]}` }
+    });
+    assert(unauthPostDeleteRes.status === 403, "Prevents other users from deleting post with 403 Forbidden");
+
+    // Alice deletes her own post
+    const authPostDeleteRes = await makeRequest("DELETE", `/api/posts/${secondPostId}`, {
+      headers: { Authorization: `Bearer ${authorToken}` }
+    });
+    assert(authPostDeleteRes.status === 200, "Author successfully deletes post with 200 OK");
+
+    // Verify post is no longer returned
+    const getDeletedPostRes = await makeRequest("GET", `/api/posts/${secondPostId}`);
+    assert(getDeletedPostRes.status === 404, "Deleted post returns 404 Not Found");
+
+    // ---------------- Test 11: Settings & Profile Update (PATCH /api/auth/profile) ----------------
+    console.log("\n--- Test 11: Settings & Profile Update ---");
+    // Alice updates her username and bio
+    const newUsername = `alice_dev_${timestamp}`;
+    const updateProfileRes = await makeRequest("PATCH", "/api/auth/profile", {
+      headers: { Authorization: `Bearer ${authorToken}` },
+      body: {
+        username: newUsername,
+        bio: "Full stack student developer building on Node.js and Express."
+      }
+    });
+    const updateProfileData = await updateProfileRes.json();
+    assert(updateProfileRes.status === 200, "Updates profile with 200 OK");
+    assert(updateProfileData.user.username === newUsername, "Username updated");
+    assert(updateProfileData.user.bio.includes("Full stack student developer"), "Bio updated");
+
+    // Duplicate username conflict check: voter tries to take Alice's new username -> 409 Conflict
+    const conflictProfileRes = await makeRequest("PATCH", "/api/auth/profile", {
+      headers: { Authorization: `Bearer ${voterTokens[0]}` },
+      body: { username: newUsername }
+    });
+    assert(conflictProfileRes.status === 409, "Rejects duplicate username with 409 Conflict");
+
+    // GET /auth/me returns updated profile information
+    const updatedMeRes = await makeRequest("GET", "/api/auth/me", {
+      headers: { Authorization: `Bearer ${updateProfileData.token}` }
+    });
+    const updatedMeData = await updatedMeRes.json();
+    assert(updatedMeData.user.username === newUsername, "GET /auth/me reflects updated username");
+    assert(updatedMeData.user.bio.includes("Full stack student developer"), "GET /auth/me reflects updated bio");
+    assert(updatedMeData.user.email === authorEmail, "GET /auth/me includes registered email");
+
+    // ---------------- Test 12: Persistence Verification ----------------
+    console.log("\n--- Test 12: Persistence Verification ---");
     const rawDiskData = JSON.parse(await fs.readFile(storePath, "utf8"));
     assert(rawDiskData.posts.some((p) => p.id === gatePostId), "Gate post persisted in store.json");
+    assert(!rawDiskData.posts.some((p) => p.id === secondPostId), "Deleted post is removed from store.json");
     assert(rawDiskData.comments.some((c) => c.postId === gatePostId), "Comment persisted in store.json");
     assert(rawDiskData.votes.some((v) => v.postId === gatePostId), "Votes persisted in store.json");
 

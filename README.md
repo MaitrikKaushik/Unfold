@@ -67,6 +67,14 @@ Open the Vite URL printed in your terminal (typically `http://localhost:5173`).
 3. **Feature C — Simple Feed Sorting:**
    - **Latest:** View posts chronologically with the newest posts first.
    - **Top:** View posts sorted by net score (`upvotes - downvotes`) descending.
+4. **Feature D — Post Management (Edit & Delete):**
+   - Three-dot menu on posts authored by the logged-in user.
+   - **Edit Post:** Inline edit form pre-populated with current title, text, category, resource URL, and image. Supports updating or removing attached images.
+   - **Delete Post:** Protected deletion with confirmation dialog, removing associated votes and comments, safely unlinking non-shared media files.
+5. **Feature E — Settings & Appearance:**
+   - Dedicated Settings view accessible via sidebar, header, and profile card.
+   - View registered email and update username and bio with conflict detection.
+   - Persistent Light/Dark theme toggle saved in `localStorage`.
 
 ---
 
@@ -90,10 +98,11 @@ This project directly demonstrates key concepts in web and backend development:
 
 ## 📡 REST API Reference
 
-### Authentication
+### Authentication & Settings
 - `POST /api/auth/register` — Create account (`{ username, email, password }`)
 - `POST /api/auth/login` — Sign in (`{ login, password }`)
 - `GET /api/auth/me` — Get current user profile *(requires Bearer token)*
+- `PATCH /api/auth/profile` — Update username & bio *(requires Bearer token)*
 
 ### Communities
 - `GET /api/communities` — List all communities
@@ -104,6 +113,8 @@ This project directly demonstrates key concepts in web and backend development:
 - `GET /api/communities/:id/posts?sort=latest|top` — View posts (sorted by newest or highest score)
 - `GET /api/posts/:id` — Get single post details
 - `POST /api/communities/:id/posts` — Create a post (`title`, `category`, `link`, `text`, optional `image` file) *(requires Bearer token)*
+- `PATCH /api/posts/:id` — Edit own post (`title`, `category`, `link`, `text`, optional `image` file, `removeImage`) *(requires Bearer token; author only)*
+- `DELETE /api/posts/:id` — Delete own post *(requires Bearer token; author only)*
 - `PUT /api/posts/:id/vote` — Vote on post (`{ "value": 1 }` or `{ "value": -1 }`) *(requires Bearer token)*
 - `DELETE /api/posts/:id/vote` — Retract active vote *(requires Bearer token)*
 
