@@ -14,7 +14,9 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 24) {
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const here = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.resolve(here, "../uploads");
+export const uploadsDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(here, "../uploads");
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -53,7 +55,14 @@ app.use(express.json({ limit: "100kb" }));
 app.use("/uploads", express.static(uploadsDir));
 
 // Health check endpoint
-app.get("/api/health", (_req, res) => res.json({ status: "ok", app: "Unfold" }));
+app.get("/api/health", (_req, res) =>
+  res.json({
+    status: "ok",
+    app: "Unfold",
+    persistence: process.env.DATA_DIR ? "persistent-disk" : "local-json",
+    uptime: Math.floor(process.uptime())
+  })
+);
 
 // REST API routes
 app.use("/api", routes);

@@ -35,6 +35,29 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", savedTheme);
   }, []);
 
+  // Verify stored session on mount and listen for session expiration events
+  useEffect(() => {
+    if (getToken()) {
+      api("/auth/me")
+        .then((res) => {
+          if (res?.user) setUser(res.user);
+        })
+        .catch(() => {
+          clearSession();
+          setUser(null);
+        });
+    }
+
+    function handleAuthExpired(e) {
+      setUser(null);
+      setEligibility(null);
+      setError(e?.detail || "Your session has expired. Please log in again.");
+    }
+
+    window.addEventListener("unfold_auth_expired", handleAuthExpired);
+    return () => window.removeEventListener("unfold_auth_expired", handleAuthExpired);
+  }, []);
+
   const loadCommunities = useCallback(async () => {
     try {
       const data = await api("/communities");
@@ -67,7 +90,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [communityId, sortBy]);
+  }, [communityId, sortBy, user]);
 
   useEffect(() => {
     loadCommunities();
