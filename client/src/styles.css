@@ -1957,23 +1957,3 @@ button, input, textarea, select {
   background: #2e1a17;
   border-color: #54251f !important;
 }
-
-.persistence-status-box {
-  background: #f7faf5;
-  border-color: #dbe8d2 !important;
-}
-
-.restore-box {
-  background: #fafafa;
-  border-color: #e5e5e5 !important;
-}
-
-[data-theme="dark"] .persistence-status-box {
-  background: #17241a;
-  border-color: #2b3e2f !important;
-}
-
-[data-theme="dark"] .restore-box {
-  background: #1e261f;
-  border-color: #2e3b2f !important;
-}
