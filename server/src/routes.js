@@ -14,7 +14,9 @@ const router = express.Router();
 const threshold = Math.max(1, Number.parseInt(process.env.POST_THRESHOLD || "5", 10));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const uploadDir = path.resolve(here, "../uploads");
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(here, "../uploads");
 
 const upload = multer({
   dest: uploadDir,
@@ -184,6 +186,74 @@ router.patch("/auth/profile", requireAuth, asyncRoute(async (req, res) => {
     user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt },
     token,
     message: "Profile updated successfully."
+  });
+}));
+
+// ----------------- Data Persistence & Backup Routes -----------------
+
+// Status of data persistence and storage mode
+router.get("/data/status", asyncRoute(async (_req, res) => {
+  const store = await readStore();
+  res.json({
+    storageType: process.env.DATA_DIR ? "persistent-disk" : "local-json",
+    isPersistent: Boolean(process.env.DATA_DIR),
+    stats: {
+      users: store.users.length,
+      communities: store.communities.length,
+      posts: store.posts.length,
+      comments: (store.comments || []).length,
+      votes: (store.votes || []).length
+    }
+  });
+}));
+
+// Download JSON backup file of current database
+router.get("/data/export", requireAuth, asyncRoute(async (_req, res) => {
+  const store = await readStore();
+  const dateStr = now().slice(0, 10);
+  res.setHeader("Content-Disposition", `attachment; filename="unfold-backup-${dateStr}.json"`);
+  res.setHeader("Content-Type", "application/json");
+  res.json(store);
+}));
+
+// Restore database from uploaded JSON backup
+router.post("/data/restore", requireAuth, asyncRoute(async (req, res) => {
+  const incoming = req.body?.data || req.body;
+  if (!incoming || typeof incoming !== "object") {
+    return fail(res, 400, "INVALID_BACKUP", "Invalid backup format. Expected a JSON object with store data.");
+  }
+
+  if (!Array.isArray(incoming.users) || !Array.isArray(incoming.posts)) {
+    return fail(res, 400, "INVALID_BACKUP_SCHEMA", "Backup must contain valid users and posts arrays.");
+  }
+
+  const restored = {
+    users: incoming.users,
+    communities: Array.isArray(incoming.communities) && incoming.communities.length > 0
+      ? incoming.communities
+      : [
+          { id: "technology", name: "Technology", description: "Technology, products, and ideas." },
+          { id: "programming", name: "Programming", description: "Code, tools, and software engineering." },
+          { id: "gaming", name: "Gaming", description: "Games, studios, and gaming culture." }
+        ],
+    memberships: Array.isArray(incoming.memberships) ? incoming.memberships : [],
+    posts: incoming.posts,
+    votes: Array.isArray(incoming.votes) ? incoming.votes : [],
+    comments: Array.isArray(incoming.comments) ? incoming.comments : []
+  };
+
+  await writeStore(restored);
+
+  res.json({
+    success: true,
+    message: "Database restored successfully.",
+    stats: {
+      users: restored.users.length,
+      communities: restored.communities.length,
+      posts: restored.posts.length,
+      comments: restored.comments.length,
+      votes: restored.votes.length
+    }
   });
 }));
 

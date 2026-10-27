@@ -4,5 +4,11 @@ server/.env
 *.tmp
 dist/
 .DS_Store
+
+# Uploads runtime directory
 server/uploads/*
 !server/uploads/.gitkeep
+
+# Data store runtime persistence (seed template is in server/src/data/seed-store.json)
+server/src/data/files/*
+!server/src/data/files/.gitkeep

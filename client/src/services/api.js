@@ -54,6 +54,14 @@ export async function api(path, options = {}) {
   const response = await fetch(`${API}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // If the server rejected an authenticated request with 401, auto-clear stale session
+    if (response.status === 401 && token && (data?.error?.code === "INVALID_TOKEN" || data?.error?.code === "AUTH_REQUIRED")) {
+      clearSession();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("unfold_auth_expired", { detail: data?.error?.message }));
+      }
+    }
+
     const message = data?.error?.message || "Request failed. Please try again.";
     const err = new Error(message);
     err.code = data?.error?.code;

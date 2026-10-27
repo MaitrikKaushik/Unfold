@@ -445,6 +445,33 @@ async function runTests() {
     assert(rawDiskData.comments.some((c) => c.postId === gatePostId), "Comment persisted in store.json");
     assert(rawDiskData.votes.some((v) => v.postId === gatePostId), "Votes persisted in store.json");
 
+    // ---------------- Test 13: Data Persistence, Export & Restore ----------------
+    console.log("\n--- Test 13: Data Persistence, Export & Restore ---");
+    const statusRes = await makeRequest("GET", "/api/data/status");
+    const statusData = await statusRes.json();
+    assert(statusRes.status === 200, "GET /api/data/status returns 200 OK");
+    assert(statusData.stats.users >= 6, "Data status accurately reports user count");
+    assert(statusData.stats.posts >= 1, "Data status accurately reports post count");
+
+    // Export database backup
+    const exportRes = await makeRequest("GET", "/api/data/export", {
+      headers: { Authorization: `Bearer ${authorToken}` }
+    });
+    assert(exportRes.status === 200, "GET /api/data/export returns 200 OK");
+    const exportData = await exportRes.json();
+    assert(Array.isArray(exportData.users), "Backup contains users array");
+    assert(Array.isArray(exportData.posts), "Backup contains posts array");
+
+    // Restore database from backup
+    const restoreRes = await makeRequest("POST", "/api/data/restore", {
+      headers: { Authorization: `Bearer ${authorToken}` },
+      body: { data: exportData }
+    });
+    const restoreData = await restoreRes.json();
+    assert(restoreRes.status === 200, "POST /api/data/restore returns 200 OK");
+    assert(restoreData.success === true, "Restore returns success: true");
+    assert(restoreData.stats.posts >= 1, "Restored database retains posts count");
+
     console.log("\n==========================================");
     console.log(`ALL TESTS PASSED! (${testsPassed} assertions passed, 0 failures)`);
     console.log("==========================================");

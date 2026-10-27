@@ -15,3 +15,17 @@ services:
         value: 5
       - key: CLIENT_ORIGIN
         value: "*"
+      - key: DATA_DIR
+        value: ""
+      - key: UPLOAD_DIR
+        value: ""
+    # To attach persistent storage on Render (Starter plan and above):
+    # disk:
+    #   name: unfold-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # envVars:
+    #   - key: DATA_DIR
+    #     value: /var/data
+    #   - key: UPLOAD_DIR
+    #     value: /var/data/uploads

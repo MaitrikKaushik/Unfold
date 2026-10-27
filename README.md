@@ -123,6 +123,34 @@ This project directly demonstrates key concepts in web and backend development:
 - `POST /api/posts/:id/comments` — Add a comment (`{ "text": "..." }`) *(requires Bearer token)*
 - `DELETE /api/comments/:id` — Delete own comment *(requires Bearer token; author only)*
 
+### Data Persistence & Backup
+- `GET /api/data/status` — Get storage engine status and record counts
+- `GET /api/data/export` — Download JSON backup of the active database *(requires Bearer token)*
+- `POST /api/data/restore` — Restore database from a JSON backup *(requires Bearer token)*
+
+---
+
+## 💾 Data Persistence Across Cloud Redeployments
+
+Unfold uses clean, syllabus-compliant JSON file persistence (`store.json`).
+When deploying to cloud platforms like **Render**, **Railway**, or **Fly.io**, container filesystems are ephemeral by default — meaning restarting or redeploying spins up a fresh container from the repository.
+
+Unfold provides three solutions to ensure your data is never lost:
+
+1. **In-App Backup & Restore (Works on all tiers including Render Free):**
+   - Go to **Settings > Database & Persistence** in the application.
+   - Click **Export Database Backup (JSON)** to download your complete data snapshot (`unfold-backup.json`).
+   - If a redeployment resets your container, simply upload your backup file in Settings and click **Restore Database**. All users, posts, comments, and votes are rehydrated in seconds.
+
+2. **Persistent Disk Volumes (Render Starter / Paid Tier):**
+   - Mount a Render Disk at `/var/data`.
+   - Set `DATA_DIR=/var/data` and `UPLOAD_DIR=/var/data/uploads` in your Render Environment Variables.
+   - Data and uploaded images will persist permanently across all git redeployments and container restarts.
+
+3. **Environment Variable Seed (`DATA_JSON`):**
+   - Export your database JSON from Settings, and paste the JSON string into the `DATA_JSON` environment variable in your cloud dashboard.
+   - Whenever a fresh container spins up, Unfold will automatically detect `DATA_JSON` and initialize the database from it.
+
 ---
 
 ## 🧪 Testing the +5 Posting Rule

@@ -396,7 +396,7 @@ export default function PostCard({
             <button
               type="submit"
               className="btn btn-dark btn-sm"
-              disabled={isSavingEdit || (!editText.trim() && !editTitle.trim() && !post.imageUrl && !editImage)}
+              disabled={isSavingEdit || (!editText.trim() && !editTitle.trim() && !editImage && (!post.imageUrl || removeCurrentImage))}
             >
               {isSavingEdit ? "Saving…" : "Save Changes"}
             </button>
