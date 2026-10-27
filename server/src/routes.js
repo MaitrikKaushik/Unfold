@@ -11,7 +11,7 @@ import { fail, asyncRoute } from "./utils/http.js";
 import { eligibilityFor } from "./services/eligibility.js";
 
 const router = express.Router();
-const threshold = Math.max(1, Number.parseInt(process.env.POST_THRESHOLD || "5", 10));
+const threshold = Math.max(1, Number.parseInt(process.env.POST_THRESHOLD || "2", 10));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = process.env.UPLOAD_DIR
