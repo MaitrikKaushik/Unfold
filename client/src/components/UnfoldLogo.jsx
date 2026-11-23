@@ -2,11 +2,14 @@ import React from "react";
 
 export default function UnfoldLogo({ size = "md", withText = false }) {
   const isSm = size === "sm";
-  const iconSize = isSm ? 18 : 23;
+  const isLg = size === "lg";
+  const isXl = size === "xl";
+  const iconSize = isSm ? 18 : isXl ? 32 : isLg ? 28 : 23;
+  const markClass = isSm ? "small-mark" : isLg ? "large-mark" : isXl ? "xl-mark" : "";
 
   return (
     <div className={`unfold-logo-container ${isSm ? "sm" : ""}`}>
-      <span className={`brand-mark ${isSm ? "small-mark" : ""}`} title="Unfold">
+      <span className={`brand-mark ${markClass}`} title="Unfold">
         <svg
           width={iconSize}
           height={iconSize}
@@ -16,6 +19,8 @@ export default function UnfoldLogo({ size = "md", withText = false }) {
           strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
         >
           {/* Stylized 'u' shape with geometric unfolding accent */}
           <path d="M6 4v8a6 6 0 0 0 12 0V4" />

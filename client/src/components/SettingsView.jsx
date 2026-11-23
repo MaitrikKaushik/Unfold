@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { api, setSession } from "../services/api";
+import Icon from "./dashboard/Icon";
 
-export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFeed }) {
+export default function SettingsView({ user, onUserUpdate, onBackToFeed }) {
   const [username, setUsername] = useState(user.username || "");
   const [bio, setBio] = useState(user.bio || "");
   const [theme, setTheme] = useState(
@@ -10,7 +11,6 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   async function handleSaveProfile(e) {
     e.preventDefault();
@@ -62,7 +62,7 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
           onClick={onBackToFeed}
           title="Return to feed"
         >
-          ← Back to Community Feed
+          <Icon name="arrowLeft" size={15} /> Back to Community Feed
         </button>
         <h1>Settings & Profile</h1>
         <p className="muted">
@@ -74,7 +74,7 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
         <div className="alert alert-success py-2 mb-3">
           {success}
           <button type="button" className="alert-close" onClick={() => setSuccess("")}>
-            ×
+            <Icon name="close" size={14} />
           </button>
         </div>
       )}
@@ -83,7 +83,7 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
         <div className="alert alert-danger py-2 mb-3">
           {error}
           <button type="button" className="alert-close" onClick={() => setError("")}>
-            ×
+            <Icon name="close" size={14} />
           </button>
         </div>
       )}
@@ -91,7 +91,9 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
       {/* Section A & B: Account Information & Edit Profile */}
       <section className="settings-card mb-4">
         <div className="settings-card-header">
-          <div className="settings-icon">👤</div>
+          <div className="settings-icon">
+            <Icon name="user" size={19} />
+          </div>
           <div>
             <h3>Account & Profile</h3>
             <p className="muted small">Your pseudonymous community identity.</p>
@@ -183,7 +185,9 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
       {/* Section C: Appearance */}
       <section className="settings-card mb-4">
         <div className="settings-card-header">
-          <div className="settings-icon">🎨</div>
+          <div className="settings-icon">
+            <Icon name="sparkle" size={19} />
+          </div>
           <div>
             <h3>Appearance</h3>
             <p className="muted small">Customize your viewing theme.</p>
@@ -196,7 +200,9 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
             className={`theme-card-btn ${theme === "light" ? "active" : ""}`}
             onClick={() => handleThemeChange("light")}
           >
-            <span className="theme-icon">☀️</span>
+            <span className="theme-icon">
+              <Icon name="sun" size={19} />
+            </span>
             <strong>Light Mode</strong>
             <span className="muted small">Clean green & crisp white palette</span>
           </button>
@@ -206,55 +212,12 @@ export default function SettingsView({ user, onUserUpdate, onLogout, onBackToFee
             className={`theme-card-btn ${theme === "dark" ? "active" : ""}`}
             onClick={() => handleThemeChange("dark")}
           >
-            <span className="theme-icon">🌙</span>
+            <span className="theme-icon">
+              <Icon name="moon" size={19} />
+            </span>
             <strong>Dark Mode</strong>
             <span className="muted small">Deep contrast with lime accents</span>
           </button>
-        </div>
-      </section>
-
-      {/* Section D: Account Actions */}
-      <section className="settings-card mb-4">
-        <div className="settings-card-header">
-          <div className="settings-icon">🔒</div>
-          <div>
-            <h3>Account Actions</h3>
-            <p className="muted small">Session and security options.</p>
-          </div>
-        </div>
-
-        <div className="mt-3">
-          {!showLogoutConfirm ? (
-            <button
-              type="button"
-              className="btn btn-outline-danger btn-sm"
-              onClick={() => setShowLogoutConfirm(true)}
-            >
-              Log out of Unfold
-            </button>
-          ) : (
-            <div className="logout-confirm-box p-3 border rounded">
-              <p className="mb-2 text-danger small">
-                Are you sure you want to end your session?
-              </p>
-              <div className="d-flex gap-2">
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  onClick={onLogout}
-                >
-                  Yes, Log Out
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={() => setShowLogoutConfirm(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </section>
     </div>
