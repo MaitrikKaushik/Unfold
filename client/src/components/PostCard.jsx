@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api, getAssetUrl } from "../services/api";
+import Icon from "./dashboard/Icon";
 
 const CATEGORIES = ["Discussion", "Question", "Resource"];
 
 export default function PostCard({
+  id,
   post,
   user,
   onVote,
@@ -187,7 +189,7 @@ export default function PostCard({
   const categoryClass = category.toLowerCase();
 
   return (
-    <article className="post-card">
+    <article className="post-card" id={id}>
       {/* Top Header of the Post Card */}
       <div className="post-top">
         <div className="avatar">{(post.author?.username || "?").slice(0, 1).toUpperCase()}</div>
@@ -214,7 +216,7 @@ export default function PostCard({
               aria-label="Post options"
               title="Post actions"
             >
-              ⋮
+              <Icon name="moreVertical" size={17} />
             </button>
             {menuOpen && (
               <div className="post-dropdown-menu">
@@ -223,7 +225,7 @@ export default function PostCard({
                   className="post-dropdown-item"
                   onClick={startEditing}
                 >
-                  <span className="dropdown-icon">✏️</span> Edit post
+                  <Icon name="edit" size={15} className="dropdown-icon" /> Edit post
                 </button>
                 <button
                   type="button"
@@ -233,7 +235,7 @@ export default function PostCard({
                     setShowDeleteConfirm(true);
                   }}
                 >
-                  <span className="dropdown-icon">🗑️</span> Delete post
+                  <Icon name="trash" size={15} className="dropdown-icon" /> Delete post
                 </button>
               </div>
             )}
@@ -280,7 +282,7 @@ export default function PostCard({
               onClick={cancelEditing}
               aria-label="Cancel editing"
             >
-              ×
+              <Icon name="close" size={14} />
             </button>
           </div>
 
@@ -297,9 +299,16 @@ export default function PostCard({
                   className={`cat-pill-btn ${editCategory === cat ? "selected" : ""}`}
                   onClick={() => setEditCategory(cat)}
                 >
-                  {cat === "Discussion" && "💬 "}
-                  {cat === "Question" && "❓ "}
-                  {cat === "Resource" && "🔗 "}
+                  <Icon
+                    name={
+                      cat === "Discussion"
+                        ? "messageSquare"
+                        : cat === "Question"
+                        ? "helpCircle"
+                        : "link"
+                    }
+                    size={15}
+                  />
                   {cat}
                 </button>
               ))}
@@ -359,7 +368,7 @@ export default function PostCard({
                   className="btn btn-outline-danger btn-sm py-0 px-2"
                   onClick={() => setRemoveCurrentImage(true)}
                 >
-                  ✕ Remove image
+                  <Icon name="close" size={13} /> Remove image
                 </button>
               </div>
             )}
@@ -378,7 +387,8 @@ export default function PostCard({
             )}
 
             <label className="upload-label small">
-              ＋ {post.imageUrl && !removeCurrentImage ? "Replace image" : "Add image"}
+              <Icon name="image" size={14} />{" "}
+              {post.imageUrl && !removeCurrentImage ? "Replace image" : "Add image"}
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
@@ -425,9 +435,13 @@ export default function PostCard({
                 className="post-resource-link"
                 title={post.link}
               >
-                <span className="link-icon">🔗</span>
+                <span className="link-icon">
+                  <Icon name="link" size={15} />
+                </span>
                 <span className="link-url">{post.link}</span>
-                <span className="link-arrow">↗</span>
+                <span className="link-arrow">
+                  <Icon name="externalLink" size={14} />
+                </span>
               </a>
             </div>
           )}
@@ -452,7 +466,7 @@ export default function PostCard({
             aria-label="Upvote"
             title="Upvote post"
           >
-            ↑
+            <Icon name="arrowUp" size={16} />
           </button>
           <span className={`score ${post.score < 0 ? "negative" : ""}`}>{post.score}</span>
           <button
@@ -461,7 +475,7 @@ export default function PostCard({
             aria-label="Downvote"
             title="Downvote post"
           >
-            ↓
+            <Icon name="arrowDown" size={16} />
           </button>
         </div>
 
@@ -470,7 +484,9 @@ export default function PostCard({
           onClick={toggleComments}
           aria-label="Toggle comments"
         >
-          <span className="comment-icon">💬</span>
+          <span className="comment-icon">
+            <Icon name="messageCircle" size={16} />
+          </span>
           <span>
             {commentCount} {commentCount === 1 ? "comment" : "comments"}
           </span>
@@ -496,7 +512,7 @@ export default function PostCard({
                 className="alert-close"
                 onClick={() => setCommentError("")}
               >
-                ×
+                <Icon name="close" size={14} />
               </button>
             </div>
           )}

@@ -1,0 +1,719 @@
+/* ==========================================================================
+   UNFOLD — cinematic launch
+   Act 1: icon + hand-written wordmark
+   Act 2: completed mark holds
+   Act 3: camera pushes through the mark into the splash
+   Act 4: dashboard entrance
+   ========================================================================== */
+
+html.unfold-launching,
+html.unfold-launching body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* --------------------------------------------------------------------------
+   Overlay atmosphere
+   -------------------------------------------------------------------------- */
+
+.launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 56% at 50% 34%, rgba(217, 243, 106, 0.085), transparent 64%),
+    radial-gradient(ellipse 82% 62% at 14% 104%, rgba(217, 243, 106, 0.035), transparent 66%),
+    linear-gradient(152deg, #23321d 0%, #1d2a18 58%, #22301c 100%);
+  color: #f4f8ec;
+  opacity: 1;
+  transition: opacity 620ms cubic-bezier(0.22, 1, 0.36, 1);
+  isolation: isolate;
+}
+
+/* The forest-green field is opaque from the first frame. Only the lighting
+   resolves in, so the dashboard never flashes through the intro. */
+.launch-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 48%, transparent 44%, rgba(8, 14, 7, 0.22) 100%);
+  opacity: 0;
+  animation: launch-ambient-in 1200ms ease 80ms forwards;
+}
+
+/* A restrained bloom that grows as the camera moves through the wordmark. */
+.launch-overlay::after {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 46%, rgba(217, 243, 106, 0.1), transparent 34%);
+  opacity: 0;
+  transition: opacity 880ms ease;
+}
+
+.launch-overlay--transitioning::after {
+  opacity: 1;
+}
+
+.launch-overlay--exit {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.launch-stage-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  height: 100dvh;
+  padding: clamp(22px, 4.5vw, 58px);
+  overflow: hidden;
+}
+
+.launch-stage {
+  grid-area: 1 / 1;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Act 1 — icon + written wordmark
+   -------------------------------------------------------------------------- */
+
+.launch-wordmark-stage {
+  z-index: 2;
+  place-items: center;
+}
+
+.launch-brand-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(17px, 2.2vw, 24px);
+  max-width: 100%;
+  transform-origin: 50% 48%;
+  will-change: transform, opacity;
+}
+
+.launch-brand-icon {
+  opacity: 0;
+  transform: scale(0.82);
+  animation: launch-icon-in 760ms cubic-bezier(0.16, 1, 0.3, 1) 80ms forwards;
+}
+
+.launch-brand-icon .unfold-logo-container {
+  gap: 0;
+}
+
+.launch-brand-icon .brand-mark {
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  background: #d9f36a;
+  color: #23321d;
+  box-shadow: 0 14px 46px rgba(9, 17, 8, 0.3);
+}
+
+.launch-brand-icon .brand-mark svg {
+  width: 34px;
+  height: 34px;
+}
+
+.launch-wordmark {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  max-width: 100%;
+  color: #f8fbef;
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(3.1rem, 7.4vw, 5.4rem);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.88;
+}
+
+.launch-letter {
+  display: inline-block;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 52%,
+    rgba(0, 0, 0, 0.72) 70%,
+    transparent 88%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 52%,
+    rgba(0, 0, 0, 0.72) 70%,
+    transparent 88%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 250% 100%;
+  mask-size: 250% 100%;
+  -webkit-mask-position: 100% 0;
+  mask-position: 100% 0;
+  animation: launch-letter-write 460ms cubic-bezier(0.58, 0, 0.32, 1) both;
+  animation-delay: calc(480ms + var(--letter-index) * 160ms);
+}
+
+/* The push-through. The same lockup scales past the viewport instead of
+   cutting to a new card, so the splash feels like the next space inside it. */
+.launch-brand-lockup.is-zooming {
+  animation: launch-brand-zoom 900ms cubic-bezier(0.7, 0, 0.28, 1) forwards;
+}
+
+/* --------------------------------------------------------------------------
+   Act 3 — splash
+   -------------------------------------------------------------------------- */
+
+.launch-splash-stage {
+  z-index: 1;
+  place-items: stretch;
+  opacity: 0;
+  transform: scale(0.965) translateY(12px);
+  filter: blur(5px);
+  animation: launch-splash-reveal 900ms cubic-bezier(0.22, 1, 0.36, 1) 320ms forwards;
+}
+
+.splash-frame {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: min(1240px, 100%);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 0 clamp(0px, 1.6vw, 18px);
+}
+
+.splash-brand-row {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+}
+
+.splash-brand-row .unfold-logo-container {
+  gap: 10px;
+}
+
+.splash-brand-row .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.splash-brand-row .brand-text {
+  color: rgba(247, 250, 239, 0.94);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+}
+
+.splash-copy {
+  align-self: center;
+  width: 100%;
+  max-width: 880px;
+  padding: clamp(24px, 7vh, 72px) 0;
+}
+
+.splash-headline {
+  margin: 0;
+  color: #f7faef;
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(3.4rem, 8.6vw, 7.4rem);
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  line-height: 0.9;
+}
+
+.splash-headline span {
+  display: block;
+}
+
+.splash-headline-accent {
+  color: #d9f36a;
+}
+
+.splash-support {
+  max-width: 340px;
+  margin: clamp(22px, 3.2vw, 34px) 0 0;
+  color: rgba(229, 240, 216, 0.62);
+  font-family: "DM Sans", sans-serif;
+  font-size: clamp(0.92rem, 1.25vw, 1.06rem);
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+}
+
+.splash-progress {
+  width: min(300px, 100%);
+  padding-bottom: clamp(2px, 1vh, 10px);
+}
+
+.splash-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.splash-progress-label {
+  color: rgba(217, 243, 106, 0.7);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.splash-progress-track {
+  display: block;
+  height: 1px;
+  overflow: hidden;
+  background: rgba(217, 243, 106, 0.16);
+}
+
+.splash-progress-bar {
+  display: block;
+  width: 34%;
+  height: 100%;
+  background: #d9f36a;
+  transform: translateX(-115%);
+  animation: launch-progress 1800ms cubic-bezier(0.45, 0, 0.55, 1) 700ms infinite;
+}
+
+/* --------------------------------------------------------------------------
+   Skip control
+   -------------------------------------------------------------------------- */
+
+.launch-skip {
+  position: absolute;
+  right: clamp(18px, 4vw, 42px);
+  bottom: clamp(18px, 4vw, 38px);
+  z-index: 3;
+  padding: 8px 14px;
+  border: 1px solid rgba(217, 243, 106, 0.18);
+  border-radius: 999px;
+  background: rgba(29, 42, 24, 0.42);
+  color: rgba(236, 245, 222, 0.7);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  animation: launch-fade-in 520ms ease 900ms forwards;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.launch-skip:hover {
+  background: rgba(217, 243, 106, 0.12);
+  border-color: rgba(217, 243, 106, 0.42);
+  color: #f4f8ec;
+}
+
+.launch-skip:focus-visible {
+  outline: none;
+  border-color: rgba(217, 243, 106, 0.6);
+  box-shadow: 0 0 0 2px rgba(217, 243, 106, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   Act 4 — real dashboard entrance
+   These animations only apply while the app is being revealed, then the class
+   is removed so later navigation inside the app stays calm.
+   -------------------------------------------------------------------------- */
+
+.app-entering .topbar {
+  animation: unfold-topbar-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-entering .sidebar {
+  animation: unfold-sidebar-in 700ms cubic-bezier(0.22, 1, 0.36, 1) 70ms both;
+}
+
+.app-entering .main-content {
+  animation: unfold-content-in 720ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.app-entering .rightbar {
+  animation: unfold-content-in 760ms cubic-bezier(0.22, 1, 0.36, 1) 240ms both;
+}
+
+.app-entering .auth-card {
+  animation: unfold-content-in 720ms cubic-bezier(0.22, 1, 0.36, 1) 100ms both;
+}
+
+.app-entering .welcome-row {
+  animation: unfold-content-in 620ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both;
+}
+
+.app-entering .eligibility-card {
+  animation: unfold-content-in 620ms cubic-bezier(0.22, 1, 0.36, 1) 220ms both;
+}
+
+.app-entering .composer {
+  animation: unfold-content-in 620ms cubic-bezier(0.22, 1, 0.36, 1) 270ms both;
+}
+
+.app-entering .feed-heading {
+  animation: unfold-content-in 620ms cubic-bezier(0.22, 1, 0.36, 1) 310ms both;
+}
+
+.app-entering .settings-page {
+  animation: unfold-content-in 620ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both;
+}
+
+.app-entering .feed-list > .post-card {
+  animation: unfold-card-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-entering .feed-list > .post-card:nth-child(1) {
+  animation-delay: 340ms;
+}
+
+.app-entering .feed-list > .post-card:nth-child(2) {
+  animation-delay: 395ms;
+}
+
+.app-entering .feed-list > .post-card:nth-child(3) {
+  animation-delay: 450ms;
+}
+
+.app-entering .feed-list > .post-card:nth-child(4) {
+  animation-delay: 505ms;
+}
+
+.app-entering .feed-list > .post-card:nth-child(5) {
+  animation-delay: 560ms;
+}
+
+.app-entering .feed-list > .post-card:nth-child(n + 6) {
+  animation-delay: 615ms;
+}
+
+/* --------------------------------------------------------------------------
+   Keyframes
+   -------------------------------------------------------------------------- */
+
+@keyframes launch-ambient-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes launch-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes launch-icon-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes launch-letter-write {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+}
+
+@keyframes launch-brand-zoom {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+  18% {
+    transform: scale(1.035);
+    opacity: 1;
+    filter: blur(0);
+  }
+  58% {
+    transform: scale(3.8);
+    opacity: 1;
+    filter: blur(0.2px);
+  }
+  100% {
+    transform: scale(15);
+    opacity: 0;
+    filter: blur(1.6px);
+  }
+}
+
+@keyframes launch-splash-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.965) translateY(12px);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes launch-progress {
+  from { transform: translateX(-115%); }
+  to { transform: translateX(405%); }
+}
+
+@keyframes unfold-topbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes unfold-sidebar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes unfold-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes unfold-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Responsive composition
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .launch-stage-shell {
+    padding: 24px 20px;
+  }
+
+  .launch-brand-lockup {
+    gap: 15px;
+  }
+
+  .launch-brand-icon .brand-mark {
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+  }
+
+  .launch-brand-icon .brand-mark svg {
+    width: 30px;
+    height: 30px;
+  }
+
+  .launch-wordmark {
+    font-size: clamp(2.9rem, 12.5vw, 4rem);
+  }
+
+  .splash-frame {
+    padding: 0;
+  }
+
+  .splash-copy {
+    padding: 20px 0;
+  }
+
+  .splash-headline {
+    font-size: clamp(2.9rem, 12.5vw, 4.6rem);
+  }
+
+  .splash-support {
+    max-width: 300px;
+  }
+
+  .launch-skip {
+    right: 16px;
+    bottom: 16px;
+    padding: 7px 12px;
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .launch-stage-shell {
+    padding: 20px 16px;
+  }
+
+  .launch-wordmark {
+    font-size: clamp(2.6rem, 14vw, 3.3rem);
+  }
+
+  .splash-headline {
+    font-size: clamp(2.55rem, 13.5vw, 3.4rem);
+  }
+
+  .splash-support {
+    margin-top: 18px;
+  }
+
+  .splash-progress {
+    width: 100%;
+  }
+
+  /* Keep the skip control clear of the full-width mobile progress rail. */
+  .launch-skip {
+    top: 16px;
+    right: 16px;
+    bottom: auto;
+  }
+}
+
+@media (max-height: 620px) {
+  .launch-stage-shell {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .launch-brand-lockup {
+    gap: 12px;
+  }
+
+  .launch-brand-icon .brand-mark {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+
+  .launch-brand-icon .brand-mark svg {
+    width: 27px;
+    height: 27px;
+  }
+
+  .launch-wordmark {
+    font-size: clamp(2.4rem, 9vh, 3.1rem);
+  }
+
+  .splash-copy {
+    padding: 12px 0;
+  }
+
+  .splash-headline {
+    font-size: clamp(2.4rem, 8.5vh, 3.5rem);
+  }
+
+  .splash-support {
+    margin-top: 14px;
+  }
+
+  .splash-progress-meta {
+    margin-bottom: 9px;
+  }
+
+  .launch-skip {
+    right: 14px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion: keep the composition, remove the camera movement.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-overlay {
+    transition-duration: 150ms;
+  }
+
+  .launch-overlay::before {
+    opacity: 1;
+    animation: none;
+  }
+
+  .launch-brand-icon,
+  .launch-letter,
+  .launch-brand-lockup.is-zooming,
+  .launch-splash-stage,
+  .launch-skip {
+    animation: none !important;
+  }
+
+  .launch-brand-icon {
+    opacity: 1;
+    transform: none;
+  }
+
+  .launch-letter {
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+
+  .launch-brand-lockup.is-zooming {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .launch-splash-stage {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .launch-skip {
+    opacity: 1;
+  }
+
+  .splash-progress-bar {
+    width: 100%;
+    transform: none;
+    animation: none;
+  }
+
+  .app-entering .topbar,
+  .app-entering .sidebar,
+  .app-entering .main-content,
+  .app-entering .rightbar,
+  .app-entering .auth-card,
+  .app-entering .welcome-row,
+  .app-entering .eligibility-card,
+  .app-entering .composer,
+  .app-entering .feed-heading,
+  .app-entering .settings-page,
+  .app-entering .feed-list > .post-card {
+    animation: none !important;
+  }
+}
