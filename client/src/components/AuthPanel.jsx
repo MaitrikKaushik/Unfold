@@ -4,7 +4,8 @@ import UnfoldLogo from "./UnfoldLogo";
 
 export default function AuthPanel({ onAuth }) {
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ username: "", displayName: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ username: "", displayName: "", password: "", confirmPassword: "", usernameDescription: "" });
+  const [suggesting, setSuggesting] = useState(false);
   const [createdAccount, setCreatedAccount] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,8 +21,18 @@ export default function AuthPanel({ onAuth }) {
         throw new Error("Your passwords do not match.");
       }
 
+      let username = form.username.trim();
+      if (mode === "register" && !username) {
+        const suggestion = await api("/auth/username/suggest", {
+          method: "POST",
+          body: JSON.stringify({ description: form.usernameDescription.trim() })
+        });
+        username = suggestion.data.username;
+        setForm((current) => ({ ...current, username }));
+      }
+
       const payload = mode === "register"
-        ? { password: form.password, displayName: form.displayName.trim() }
+        ? { password: form.password, displayName: form.displayName.trim(), username }
         : { username: form.username.trim(), password: form.password };
 
       const result = await api(`/auth/${mode === "register" ? "register" : "login"}`, {
@@ -58,7 +69,7 @@ export default function AuthPanel({ onAuth }) {
     setMode(nextMode);
     setCreatedAccount(null);
     setError("");
-    setForm({ username: "", displayName: "", password: "", confirmPassword: "" });
+    setForm({ username: "", displayName: "", password: "", confirmPassword: "", usernameDescription: "" });
   }
 
   if (createdAccount) {
@@ -117,10 +128,52 @@ export default function AuthPanel({ onAuth }) {
                   onChange={(event) => setForm({ ...form, displayName: event.target.value })}
                 />
               </div>
-              <div className="registration-username-note mb-3">
-                <span className="registration-username-icon">✦</span>
-                <span>Your unique <strong>@username</strong> will be generated automatically after registration.</span>
+              <div className="mb-3">
+                <label className="form-label" htmlFor="username-inspiration">
+                  Describe your username vibe <span className="muted">(optional)</span>
+                </label>
+                <textarea
+                  id="username-inspiration"
+                  className="form-control"
+                  rows="2"
+                  maxLength={300}
+                  placeholder="e.g. astronomy, coding, minimal futuristic aesthetics..."
+                  value={form.usernameDescription}
+                  onChange={(event) => setForm({ ...form, usernameDescription: event.target.value })}
+                />
+                <div className="d-flex justify-content-between align-items-center mt-2 gap-2">
+                  <small className="muted">Gemini will create a distinctive username. Leave blank for a surprise.</small>
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm flex-shrink-0"
+                    disabled={suggesting || busy}
+                    onClick={async () => {
+                      setError("");
+                      setSuggesting(true);
+                      try {
+                        const result = await api("/auth/username/suggest", {
+                          method: "POST",
+                          body: JSON.stringify({ description: form.usernameDescription.trim() })
+                        });
+                        setForm((current) => ({ ...current, username: result.data.username }));
+                      } catch (suggestionError) {
+                        setError(suggestionError.message);
+                      } finally {
+                        setSuggesting(false);
+                      }
+                    }}
+                  >
+                    {suggesting ? "Creating…" : form.username ? "Regenerate" : "Generate username"}
+                  </button>
+                </div>
               </div>
+              {form.username && (
+                <div className="generated-username-panel mb-3">
+                  <span className="generated-username-label">YOUR USERNAME</span>
+                  <strong>@{form.username}</strong>
+                  <button type="button" className="btn btn-link btn-sm" onClick={() => setForm({ ...form, username: "" })}>Clear</button>
+                </div>
+              )}
             </>
           ) : (
             <div className="mb-3">
@@ -130,7 +183,7 @@ export default function AuthPanel({ onAuth }) {
                 className="form-control"
                 autoComplete="username"
                 required
-                placeholder="e.g. unfold_a7f92c"
+                placeholder="Your Unfold username"
                 value={form.username}
                 onChange={(event) => setForm({ ...form, username: event.target.value })}
               />
@@ -185,9 +238,6 @@ export default function AuthPanel({ onAuth }) {
           </button>
         </p>
 
-        <div className="privacy-note">
-          <span>✿</span> Pseudonymous by default. Your username is yours to keep.
-        </div>
       </div>
     </div>
   );

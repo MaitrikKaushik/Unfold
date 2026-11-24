@@ -1969,8 +1969,8 @@ button, input, textarea, select {
    ================================================================ */
 :root,
 [data-theme="light"] {
-  --color-primary: #5B4168;
-  --color-primary-hover: #493451;
+  --color-primary: #35263E;
+  --color-primary-hover: #51405B;
   --color-on-primary: #FFFFFF;
   --color-secondary: #FFB49A;
   --color-lavender: #C9B6FF;
@@ -1981,9 +1981,9 @@ button, input, textarea, select {
   --color-text: #35263E;
   --color-muted: #786B7C;
   --color-border: #EFE3E8;
-  --color-success: #287A5B;
+  --color-success: #43866C;
   --color-danger: #B94B5D;
-  --color-focus: #7657A6;
+  --color-focus: #C9B6FF;
   --radius-card: 18px;
   --radius-control: 12px;
 
@@ -2338,3 +2338,56 @@ body {
 [data-theme="dark"] .composer .btn-dark:hover {
   color: var(--color-on-primary);
 }
+
+
+/* Peachy Community palette alignment — final shared overrides */
+:root, [data-theme="light"] {
+  --color-primary: #35263E;
+  --color-primary-hover: #51405B;
+  --color-on-primary: #FFF8F0;
+  --color-secondary: #FFB49A;
+  --color-lavender: #C9B6FF;
+  --color-mint: #A8E6CF;
+  --color-bg: #FFF8F0;
+  --color-surface: #FFFFFF;
+  --color-surface-soft: #FFF0E8;
+  --color-text: #35263E;
+  --color-muted: #786B7C;
+  --color-border: #EFE3E8;
+  --color-success: #43866C;
+  --color-danger: #BD6074;
+  --color-focus: #C9B6FF;
+}
+[data-theme="dark"] {
+  --color-primary: #C9B6FF;
+  --color-primary-hover: #DDCEFF;
+  --color-on-primary: #35263E;
+  --color-secondary: #FFB49A;
+  --color-lavender: #C9B6FF;
+  --color-mint: #A8E6CF;
+  --color-bg: #1D1523;
+  --color-surface: #382B40;
+  --color-surface-soft: #35263E;
+  --color-text: #FFF8F0;
+  --color-muted: #B8A7BB;
+  --color-border: #493A52;
+  --color-success: #A8E6CF;
+  --color-danger: #FF9DAA;
+  --color-focus: #C9B6FF;
+}
+.user-chip { background: #FFF0E8; color: #35263E; }
+.online-dot { background: #A8E6CF; }
+.logout-btn { border-color: #EFE3E8; color: #35263E; }
+.logout-btn:hover { background: #FFF0E8; border-color: #FFB49A; color: #35263E; }
+.nav-item.active, .community-nav.chosen { background: #F3EDFF; color: #35263E; }
+.sidebar-note { background: #FFF0E8; border-color: #F6D4C7; color: #786B7C; }
+.sidebar-note strong { color: #35263E; }
+.vote-btn.selected { background: #EAF6EF; color: #43866C; border-color: #CDEBDD; }
+.post-resource-link { background: #FFF0E8; border-color: #F6D4C7; color: #51405B; }
+[data-theme="dark"] .user-chip { background: #35263E; color: #E8DBFF; }
+[data-theme="dark"] .online-dot { background: #A8E6CF; }
+[data-theme="dark"] .logout-btn { border-color: #59456A; color: #D9CBDD; }
+[data-theme="dark"] .logout-btn:hover { background: #493451; border-color: #C9B6FF; color: #FFF8F0; }
+[data-theme="dark"] .vote-btn.selected { background: #263D38; color: #A8E6CF; border-color: #42685C; }
+[data-theme="dark"] .post-resource-link { background: #35263E; border-color: #59456A; color: #C9B6FF; }
+.username-inspiration-help { color: var(--color-muted); }

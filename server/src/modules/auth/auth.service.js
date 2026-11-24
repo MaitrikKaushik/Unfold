@@ -21,9 +21,75 @@ export function validatePassword(password) {
   }
 }
 
-export function generateUsernameCandidate() {
-  return `unfold_${crypto.randomBytes(6).toString("hex")}`;
+
+const USERNAME_WORDS = [
+  "nebula", "pixel", "orbit", "velvet", "nova", "echo", "mellow", "cosmic",
+  "lunar", "vivid", "drift", "honey", "cipher", "bloom", "solstice", "indigo",
+  "ember", "aurora", "cloud", "mosaic", "atlas", "quirky", "midnight", "ripple"
+];
+
+function fallbackUsername() {
+  const pick = () => USERNAME_WORDS[crypto.randomInt(USERNAME_WORDS.length)];
+  return `${pick()}_${pick()}${crypto.randomInt(10, 100)}`;
 }
+
+function cleanUsername(value) {
+  let username = String(value || "").trim().toLowerCase().replace(/^@+/, "");
+  username = username.normalize("NFKD").replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (username.length < 8) username = `${username}_unfold`;
+  return username.slice(0, 32).replace(/_+$/g, "");
+}
+
+async function geminiUsernameCandidate(description = "") {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return fallbackUsername();
+
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const prompt = [
+    "Create ONE original, memorable, modern internet username for a community social platform called Unfold.",
+    "Style: genuinely cool, distinctive, clean, aesthetic and easy to remember. Avoid generic usernames, random hexadecimal strings, the word 'user', and long digit suffixes.",
+    "Use lowercase letters and underscores only. Return only the username, without @, quotes, markdown or explanation.",
+    "The username must be 8 to 24 characters long.",
+    description ? `The user's optional inspiration: ${description.slice(0, 300)}` : "No inspiration was supplied. Invent a fresh creative direction yourself."
+  ].join("\\n");
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 1.1, maxOutputTokens: 40 }
+    }),
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!response.ok) throw new Error(`Gemini username generation failed (${response.status}).`);
+  const data = await response.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim();
+  const candidate = cleanUsername(raw);
+  if (!/^[a-z0-9_]{8,32}$/.test(candidate)) throw new Error("Gemini returned an invalid username.");
+  return candidate;
+}
+
+export async function generateUniqueUsername(description = "") {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let candidate;
+    try {
+      candidate = await geminiUsernameCandidate(description);
+    } catch {
+      candidate = fallbackUsername();
+    }
+    if (!(await User.exists({ username: candidate }))) return candidate;
+  }
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = fallbackUsername();
+    if (!(await User.exists({ username: candidate }))) return candidate;
+  }
+  const error = new Error("Could not generate an available username. Please try again.");
+  error.status = 503;
+  error.code = "USERNAME_GENERATION_FAILED";
+  throw error;
+}
+
 
 export function publicUser(user) {
   return {
@@ -52,7 +118,7 @@ export function createAccessToken(user) {
   });
 }
 
-export async function registerUser({ password, displayName = "" }) {
+export async function registerUser({ password, displayName = "", username: requestedUsername = "", usernameDescription = "" }) {
   validatePassword(password);
   const cleanDisplayName = String(displayName || "").trim();
   if (cleanDisplayName.length > 40) {
@@ -63,20 +129,25 @@ export async function registerUser({ password, displayName = "" }) {
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const username = generateUsernameCandidate();
-    try {
-      const user = await User.create({ username, passwordHash, displayName: cleanDisplayName });
-      return user;
-    } catch (error) {
-      if (error?.code === 11000 && error?.keyPattern?.username && attempt < 5) continue;
-      throw error;
-    }
+  const requested = requestedUsername ? String(requestedUsername).trim().toLowerCase() : "";
+  const username = requested || await generateUniqueUsername(usernameDescription);
+  if (!/^[a-z0-9_]{8,32}$/.test(username)) {
+    const error = new Error("Username must be 8–32 characters using lowercase letters, numbers or underscores.");
+    error.status = 400;
+    error.code = "INVALID_USERNAME";
+    throw error;
   }
-  const error = new Error("Could not generate a unique username. Please try again.");
-  error.status = 503;
-  error.code = "USERNAME_GENERATION_FAILED";
-  throw error;
+  try {
+    return await User.create({ username, passwordHash, displayName: cleanDisplayName });
+  } catch (error) {
+    if (error?.code === 11000 && error?.keyPattern?.username) {
+      const conflict = new Error("That username was just taken. Generate another one.");
+      conflict.status = 409;
+      conflict.code = "USERNAME_TAKEN";
+      throw conflict;
+    }
+    throw error;
+  }
 }
 
 export async function authenticateUser({ username, password }) {

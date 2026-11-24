@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import { asyncRoute } from "../../utils/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import User from "../../models/User.js";
-import { authenticateUser, createAccessToken, publicUser, registerUser } from "./auth.service.js";
+import { authenticateUser, createAccessToken, publicUser, registerUser, generateUniqueUsername } from "./auth.service.js";
 import logger from "../../config/logger.js";
 
 const router = express.Router();
@@ -38,8 +38,30 @@ function clearSessionCookie(res) {
   res.clearCookie(SESSION_COOKIE, options);
 }
 
+const usernameSuggestionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { code: "USERNAME_RATE_LIMIT", message: "Too many username generations. Please try again later." } }
+});
+
+router.post("/username/suggest", usernameSuggestionLimiter, asyncRoute(async (req, res) => {
+  const description = String(req.body?.description || "").trim();
+  if (description.length > 300) {
+    return res.status(400).json({ success: false, error: { code: "DESCRIPTION_TOO_LONG", message: "Keep your username inspiration under 300 characters." } });
+  }
+  const username = await generateUniqueUsername(description);
+  return res.json({ success: true, data: { username } });
+}));
+
 router.post("/register", authLimiter, asyncRoute(async (req, res) => {
-  const user = await registerUser({ password: req.body?.password, displayName: req.body?.displayName });
+  const user = await registerUser({
+    password: req.body?.password,
+    displayName: req.body?.displayName,
+    username: req.body?.username,
+    usernameDescription: req.body?.usernameDescription
+  });
   const token = createAccessToken(user);
   setSessionCookie(res, token);
   logger.info("New Unfold account registered", { userId: String(user._id) });
