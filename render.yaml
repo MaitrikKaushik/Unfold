@@ -5,27 +5,29 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm install
-    startCommand: node src/server.js
+    startCommand: npm start
     envVars:
-      - key: PORT
-        value: 10000
+      - key: NODE_ENV
+        value: production
       - key: JWT_SECRET
         generateValue: true
-      - key: POST_THRESHOLD
-        value: 5
       - key: CLIENT_ORIGIN
-        value: "*"
-      - key: DATA_DIR
-        value: ""
-      - key: UPLOAD_DIR
-        value: ""
-    # To attach persistent storage on Render (Starter plan and above):
-    # disk:
-    #   name: unfold-data
-    #   mountPath: /var/data
-    #   sizeGB: 1
-    # envVars:
-    #   - key: DATA_DIR
-    #     value: /var/data
-    #   - key: UPLOAD_DIR
-    #     value: /var/data/uploads
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: BCRYPT_ROUNDS
+        value: "12"
+      - key: LOG_LEVEL
+        value: info

@@ -4,37 +4,89 @@ import UnfoldLogo from "./UnfoldLogo";
 
 export default function AuthPanel({ onAuth }) {
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ username: "", email: "", password: "" });
+  const [form, setForm] = useState({ username: "", displayName: "", password: "", confirmPassword: "" });
+  const [createdAccount, setCreatedAccount] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(event) {
+    event.preventDefault();
     setError("");
     setBusy(true);
 
     try {
-      const body = mode === "register"
-        ? { username: form.username.trim(), email: form.email.trim(), password: form.password }
-        : { login: form.username.trim(), password: form.password };
+      if (mode === "register" && form.password !== form.confirmPassword) {
+        throw new Error("Your passwords do not match.");
+      }
 
-      const data = await api(`/auth/${mode === "register" ? "register" : "login"}`, {
+      const payload = mode === "register"
+        ? { password: form.password, displayName: form.displayName.trim() }
+        : { username: form.username.trim(), password: form.password };
+
+      const result = await api(`/auth/${mode === "register" ? "register" : "login"}`, {
         method: "POST",
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload)
       });
+      const user = result.user || result.data?.user;
+      if (!user) throw new Error("The server did not return an account profile.");
 
-      setSession(data.token, data.user);
-      onAuth(data.user);
-    } catch (err) {
-      setError(err.message);
+      setSession(undefined, user);
+      if (mode === "register") {
+        setCreatedAccount(user);
+      } else {
+        onAuth(user);
+      }
+    } catch (requestError) {
+      setError(requestError.message);
     } finally {
       setBusy(false);
     }
   }
 
-  function toggleMode(newMode) {
-    setMode(newMode);
+  async function copyUsername() {
+    try {
+      await navigator.clipboard.writeText(createdAccount.username);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setError("Clipboard access was unavailable. Please select and copy your username manually.");
+    }
+  }
+
+  function switchMode(nextMode) {
+    setMode(nextMode);
+    setCreatedAccount(null);
     setError("");
+    setForm({ username: "", displayName: "", password: "", confirmPassword: "" });
+  }
+
+  if (createdAccount) {
+    return (
+      <div className="auth-wrap">
+        <div className="auth-card registration-success-card">
+          <div className="auth-header">
+            <UnfoldLogo size="md" />
+            <p className="eyebrow mt-3">YOUR UNFOLD IDENTITY</p>
+            <h1>You're in.</h1>
+            <p className="muted">Your account is ready. Save your username because this is what you'll use every time you log in.</p>
+          </div>
+          <div className="generated-username-panel">
+            <span className="generated-username-label">YOUR GENERATED USERNAME</span>
+            <strong>@{createdAccount.username}</strong>
+            <button type="button" className="btn btn-outline-primary btn-sm" onClick={copyUsername}>
+              {copied ? "Copied" : "Copy username"}
+            </button>
+          </div>
+          <div className="alert alert-warning small mt-3 mb-3">
+            Keep this username somewhere safe. Unfold uses your username and password for login; there is no email-based recovery in this prototype.
+          </div>
+          <button type="button" className="btn btn-primary w-100 py-2" onClick={() => onAuth(createdAccount)}>
+            Continue to Unfold
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -42,57 +94,45 @@ export default function AuthPanel({ onAuth }) {
       <div className="auth-card">
         <div className="auth-header">
           <UnfoldLogo size="md" />
-          <p className="eyebrow mt-3">UNFOLD COMMUNITY</p>
-          <h1>{mode === "login" ? "Welcome back." : "Join Unfold."}</h1>
+          <p className="eyebrow mt-3">A LITTLE CORNER OF THE INTERNET</p>
+          <h1>{mode === "login" ? "Welcome back." : "Find your people."}</h1>
           <p className="muted">
             {mode === "login"
-              ? "Sign in to participate, vote, and unlock posting rights."
-              : "Create an account to join discussions and share knowledge."}
+              ? "Sign in with your Unfold username and password."
+              : "Create your account. We'll generate a unique username for you."}
           </p>
         </div>
 
         <form onSubmit={submit} className="mt-4">
-          {mode === "register" && (
+          {mode === "register" ? (
             <>
               <div className="mb-3">
-                <label className="form-label" htmlFor="register-username">Username</label>
+                <label className="form-label" htmlFor="register-display-name">Display name <span className="muted">(optional)</span></label>
                 <input
-                  id="register-username"
+                  id="register-display-name"
                   className="form-control"
-                  required
-                  minLength={3}
-                  maxLength={24}
-                  placeholder="e.g. alex_dev"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  maxLength={40}
+                  placeholder="What should people call you?"
+                  value={form.displayName}
+                  onChange={(event) => setForm({ ...form, displayName: event.target.value })}
                 />
-                <span className="form-text muted small">3–24 characters: letters, numbers, or underscores.</span>
               </div>
-              <div className="mb-3">
-                <label className="form-label" htmlFor="register-email">Email address</label>
-                <input
-                  id="register-email"
-                  type="email"
-                  className="form-control"
-                  required
-                  placeholder="alex@example.com"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
+              <div className="registration-username-note mb-3">
+                <span className="registration-username-icon">✦</span>
+                <span>Your unique <strong>@username</strong> will be generated automatically after registration.</span>
               </div>
             </>
-          )}
-
-          {mode === "login" && (
+          ) : (
             <div className="mb-3">
-              <label className="form-label" htmlFor="login-username">Username or email</label>
+              <label className="form-label" htmlFor="login-username">Username</label>
               <input
                 id="login-username"
                 className="form-control"
+                autoComplete="username"
                 required
-                placeholder="Enter username or email"
+                placeholder="e.g. unfold_a7f92c"
                 value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                onChange={(event) => setForm({ ...form, username: event.target.value })}
               />
             </div>
           )}
@@ -103,34 +143,50 @@ export default function AuthPanel({ onAuth }) {
               id="auth-password"
               type="password"
               className="form-control"
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
               required
               minLength={mode === "register" ? 8 : undefined}
-              placeholder={mode === "register" ? "Minimum 8 characters" : "Enter your password"}
+              maxLength={128}
+              placeholder={mode === "register" ? "At least 8 characters" : "Enter your password"}
               value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
             />
           </div>
 
+          {mode === "register" && (
+            <div className="mb-3">
+              <label className="form-label" htmlFor="confirm-password">Confirm password</label>
+              <input
+                id="confirm-password"
+                type="password"
+                className="form-control"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                maxLength={128}
+                placeholder="Enter your password again"
+                value={form.confirmPassword}
+                onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
+              />
+            </div>
+          )}
+
           {error && <div className="alert alert-danger py-2">{error}</div>}
 
-          <button className="btn btn-dark w-100 py-2 mt-2" disabled={busy}>
-            {busy ? "Please wait…" : mode === "login" ? "Log in to Unfold" : "Create Unfold account"}
+          <button className="btn btn-primary w-100 py-2 mt-2" disabled={busy}>
+            {busy ? "Please wait…" : mode === "login" ? "Log in to Unfold" : "Create my account"}
           </button>
         </form>
 
         <p className="text-center mt-3 mb-0 small muted">
-          {mode === "login" ? "New to Unfold?" : "Already have an account?"}{" "}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => toggleMode(mode === "login" ? "register" : "login")}
-          >
+          {mode === "login" ? "New around here?" : "Already have an account?"}{" "}
+          <button type="button" className="link-button" onClick={() => switchMode(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Create an account" : "Log in"}
           </button>
         </p>
 
         <div className="privacy-note">
-          <span>◉</span> Pseudonymous by default. Quality content earns community trust.
+          <span>✿</span> Pseudonymous by default. Your username is yours to keep.
         </div>
       </div>
     </div>

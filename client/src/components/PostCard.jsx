@@ -38,7 +38,8 @@ export default function PostCard({
 
   const menuRef = useRef(null);
 
-  const isAuthor = Boolean(user && user.id === post.author?.id);
+  const isAuthor = Boolean(user && (user.id === post.author?.id || user.id === post.author?.mongoId));
+  const isPending = post.status === "pending";
 
   const date = new Date(post.createdAt).toLocaleString([], {
     dateStyle: "medium",
@@ -192,7 +193,8 @@ export default function PostCard({
       <div className="post-top">
         <div className="avatar">{(post.author?.username || "?").slice(0, 1).toUpperCase()}</div>
         <div className="post-author">
-          <strong>{post.author?.username || "anonymous"}</strong>
+          <strong>{post.author?.displayName || post.author?.username || "anonymous"}</strong>
+          {post.author?.displayName && <em className="post-handle">@{post.author?.username}</em>}
           <span>
             {date}
             {post.updatedAt && <em className="ms-1 small muted">(edited)</em>}
@@ -202,6 +204,7 @@ export default function PostCard({
         <div className="post-badges">
           <span className={`category-badge badge-${categoryClass}`}>{category}</span>
           <span className="community-pill">{post.communityId}</span>
+          {isPending && <span className="pending-status-pill">Pending · private</span>}
         </div>
 
         {/* Three-Dot Menu (Owner only) */}
@@ -218,13 +221,15 @@ export default function PostCard({
             </button>
             {menuOpen && (
               <div className="post-dropdown-menu">
-                <button
-                  type="button"
-                  className="post-dropdown-item"
-                  onClick={startEditing}
-                >
-                  <span className="dropdown-icon">✏️</span> Edit post
-                </button>
+                {!isPending && (
+                  <button
+                    type="button"
+                    className="post-dropdown-item"
+                    onClick={startEditing}
+                  >
+                    <span className="dropdown-icon">✏️</span> Edit post
+                  </button>
+                )}
                 <button
                   type="button"
                   className="post-dropdown-item text-danger"
@@ -432,57 +437,78 @@ export default function PostCard({
             </div>
           )}
 
-          {post.imageUrl && (
+          {(post.media || []).filter((item) => item.mediaType === "image").length ? (
+            (post.media || []).filter((item) => item.mediaType === "image").map((item) => (
+              <img
+                className="post-image"
+                key={item.assetId || item.publicId}
+                src={item.url}
+                alt="Post attachment"
+                loading="lazy"
+              />
+            ))
+          ) : post.imageUrl ? (
             <img
               className="post-image"
               src={getAssetUrl(post.imageUrl)}
               alt="Post attachment"
               loading="lazy"
             />
-          )}
+          ) : null}
+          {(post.media || []).filter((item) => item.mediaType === "audio").map((item) => (
+            <div className="post-audio-player" key={item.assetId || item.publicId}>
+              <span className="post-audio-label">Audio attachment</span>
+              <audio controls preload="metadata" src={item.url} />
+            </div>
+          ))}
         </>
       )}
 
-      {/* Post Actions (Votes & Comments) */}
-      <div className="post-actions">
-        <div className="vote-group">
-          <button
-            className={`vote-btn ${post.myVote === 1 ? "selected" : ""}`}
-            onClick={() => onVote(post, 1)}
-            aria-label="Upvote"
-            title="Upvote post"
-          >
-            ↑
-          </button>
-          <span className={`score ${post.score < 0 ? "negative" : ""}`}>{post.score}</span>
-          <button
-            className={`vote-btn ${post.myVote === -1 ? "selected down" : ""}`}
-            onClick={() => onVote(post, -1)}
-            aria-label="Downvote"
-            title="Downvote post"
-          >
-            ↓
-          </button>
+      {/* Pending posts stay private and cannot receive votes or comments. */}
+      {isPending ? (
+        <div className="pending-post-notice">
+          <strong>Your post is saved privately.</strong>
+          <span>It will be published automatically when your latest published post anywhere on Unfold receives 2 upvotes.</span>
         </div>
+      ) : (
+        <div className="post-actions">
+          <div className="vote-group">
+            <button
+              className={`vote-btn ${post.myVote === 1 ? "selected" : ""}`}
+              onClick={() => onVote(post, 1)}
+              aria-label="Upvote"
+              title="Upvote post"
+            >
+              ↑
+            </button>
+            <span className={`score ${post.score < 0 ? "negative" : ""}`}>{post.score}</span>
+            <button
+              className={`vote-btn ${post.myVote === -1 ? "selected down" : ""}`}
+              onClick={() => onVote(post, -1)}
+              aria-label="Downvote"
+              title="Downvote post"
+            >
+              ↓
+            </button>
+          </div>
 
-        <button
-          className={`comment-toggle-btn ${showComments ? "active" : ""}`}
-          onClick={toggleComments}
-          aria-label="Toggle comments"
-        >
-          <span className="comment-icon">💬</span>
-          <span>
-            {commentCount} {commentCount === 1 ? "comment" : "comments"}
+          <button
+            className={`comment-toggle-btn ${showComments ? "active" : ""}`}
+            onClick={toggleComments}
+            aria-label="Toggle comments"
+          >
+            <span className="comment-icon">💬</span>
+            <span>{commentCount} {commentCount === 1 ? "comment" : "comments"}</span>
+          </button>
+
+          <span className="vote-detail ms-auto">
+            {post.upvoteCount} up · {post.downvoteCount} down
           </span>
-        </button>
-
-        <span className="vote-detail ms-auto">
-          {post.upvoteCount} up · {post.downvoteCount} down
-        </span>
-      </div>
+        </div>
+      )}
 
       {/* Comments Section */}
-      {showComments && (
+      {showComments && !isPending && (
         <section className="comments-section" aria-label="Comments">
           <div className="comments-header">
             <h4>Discussion ({commentCount})</h4>
@@ -537,7 +563,7 @@ export default function PostCard({
                   dateStyle: "short",
                   timeStyle: "short"
                 });
-                const isCommentAuthor = Boolean(user && user.id === comment.author?.id);
+                const isCommentAuthor = Boolean(user && (user.id === comment.author?.id || user.id === comment.author?.mongoId));
 
                 return (
                   <div key={comment.id} className="comment-item">

@@ -3,7 +3,7 @@ import AuthPanel from "./components/AuthPanel";
 import PostCard from "./components/PostCard";
 import SettingsView from "./components/SettingsView";
 import UnfoldLogo from "./components/UnfoldLogo";
-import { api, clearSession, getToken, getUser } from "./services/api";
+import { api, clearSession, hasCachedUser, getUser } from "./services/api";
 
 const CATEGORIES = ["Discussion", "Question", "Resource"];
 
@@ -11,7 +11,7 @@ export default function App() {
   const [user, setUser] = useState(getUser());
   const [activeView, setActiveView] = useState("feed"); // "feed" | "settings"
   const [communities, setCommunities] = useState([]);
-  const [communityId, setCommunityId] = useState("technology");
+  const [communityId, setCommunityId] = useState("general");
   const [posts, setPosts] = useState([]);
   const [eligibility, setEligibility] = useState(null);
   const [joined, setJoined] = useState([]);
@@ -23,6 +23,7 @@ export default function App() {
   const [postLink, setPostLink] = useState("");
   const [postText, setPostText] = useState("");
   const [postImage, setPostImage] = useState(null);
+  const [postAudio, setPostAudio] = useState(null);
 
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +38,7 @@ export default function App() {
 
   // Verify stored session on mount and listen for session expiration events
   useEffect(() => {
-    if (getToken()) {
+    if (hasCachedUser()) {
       api("/auth/me")
         .then((res) => {
           if (res?.user) setUser(res.user);
@@ -75,7 +76,7 @@ export default function App() {
       const data = await api(`/communities/${communityId}/posts?sort=${sortBy}`);
       setPosts(data.posts || []);
 
-      if (getToken()) {
+      if (hasCachedUser()) {
         try {
           const gate = await api(`/communities/${communityId}/eligibility`);
           setEligibility(gate);
@@ -130,16 +131,20 @@ export default function App() {
     }
     if (postText.trim()) form.append("text", postText.trim());
     if (postImage) form.append("image", postImage);
+    if (postAudio) form.append("files", postAudio);
 
     try {
-      await api(`/communities/${communityId}/posts`, { method: "POST", body: form });
+      const result = await api(`/communities/${communityId}/posts`, { method: "POST", body: form });
       setPostTitle("");
       setPostText("");
       setPostLink("");
       setPostCategory("Discussion");
       setPostImage(null);
+      setPostAudio(null);
       e.target.reset();
-      setNotice("Your post has been published to the community.");
+      setNotice(result?.post?.status === "pending"
+        ? "Your post is saved privately. It will appear in the feed after your latest published post receives 2 upvotes."
+        : "Your post has been published to the community.");
       await loadCommunity();
     } catch (e) {
       setError(e.message);
@@ -192,7 +197,12 @@ export default function App() {
     setUser(updatedUser);
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      if (hasCachedUser()) await api("/auth/logout", { method: "POST" });
+    } catch {
+      // Always clear the local profile cache even if the server session expired.
+    }
     clearSession();
     setUser(null);
     setEligibility(null);
@@ -221,7 +231,7 @@ export default function App() {
     );
   }
 
-  const isMember = joined.includes(communityId) || eligibility?.reason !== "NOT_A_MEMBER";
+  const isMember = eligibility?.isMember === true || joined.includes(communityId);
   const canPost = eligibility?.canPost === true;
   const currentCommunity = communities.find((c) => c.id === communityId) || {
     id: communityId,
@@ -313,8 +323,7 @@ export default function App() {
             <span className="sidebar-note-icon">✳</span>
             <strong>Good things take votes.</strong>
             <p>
-              Your next post in a community unlocks when your latest post earns a net score of +
-              {eligibility?.threshold || 5}.
+              Across Unfold, each next post unlocks when your latest published post receives 2 distinct upvotes. Downvotes do not affect this requirement.
             </p>
           </div>
         </aside>
@@ -376,21 +385,28 @@ export default function App() {
                       ? "You're clear to contribute"
                       : eligibility.reason === "NOT_A_MEMBER"
                       ? "Join to participate"
+                      : eligibility.reason === "PENDING_POST_EXISTS"
+                      ? "Your post is waiting for votes"
                       : "Your next post is locked"}
                   </strong>
                   <p>
                     {!eligibility
                       ? "Join this community to see your posting eligibility."
                       : eligibility.reason === "NOT_A_MEMBER"
-                      ? "Become a member to create your first post in this community."
+                      ? "Join this community to publish here. Your first post on Unfold is free."
+                      : eligibility.reason === "PENDING_POST_EXISTS"
+                      ? "Your next post is saved privately. It will appear once your latest published post anywhere on Unfold receives 2 upvotes."
                       : eligibility.currentGatePost
-                      ? `Latest post net score: ${eligibility.currentGatePost.score} / ${eligibility.threshold}. ${
+                      ? `Latest Unfold post: ${eligibility.currentGatePost.upvoteCount} / 2 upvotes. ${
                           canPost
-                            ? "Threshold achieved! You are clear to post again."
-                            : `You need a net score of +${eligibility.threshold} on your latest post to unlock your next contribution.`
+                            ? "Two upvotes reached! You are clear to post again."
+                            : `You need ${Math.max(0, 2 - eligibility.currentGatePost.upvoteCount)} more upvote(s) to unlock your next contribution. Downvotes do not affect this requirement.`
                         }`
-                      : "Your first post in this community is ready to be published."}
+                      : "Your first post on Unfold is ready to be published."}
                   </p>
+                  {eligibility && isMember && !canPost && !eligibility.pendingPostExists && (
+                    <p className="eligibility-queue-hint">You can still submit one post. It will remain private until your latest published post receives its second upvote.</p>
+                  )}
                 </div>
 
                 {eligibility?.reason === "NOT_A_MEMBER" && (
@@ -407,20 +423,20 @@ export default function App() {
                         style={{
                           width: `${Math.max(
                             0,
-                            Math.min(100, (eligibility.currentGatePost.score / eligibility.threshold) * 100)
+                            Math.min(100, (eligibility.currentGatePost.upvoteCount / 2) * 100)
                           )}%`
                         }}
                       ></div>
                     </div>
                     <small>
-                      {eligibility.currentGatePost.score} / +{eligibility.threshold}
+                      {eligibility.currentGatePost.upvoteCount} / 2 upvotes
                     </small>
                   </div>
                 )}
               </section>
 
               {/* Composer */}
-              {isMember && canPost && (
+              {isMember && !eligibility?.pendingPostExists && (
                 <section className="composer">
                   <div className="composer-heading">
                     <div className="avatar">{user.username.slice(0, 1).toUpperCase()}</div>
@@ -497,24 +513,35 @@ export default function App() {
                     )}
 
                     <div className="composer-footer">
-                      <label className="upload-label" title="Attach an image">
-                        ＋ Add image
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,image/gif"
-                          hidden
-                          onChange={(e) => setPostImage(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                      <span className="muted small">
-                        {postImage ? postImage.name : `${postText.length}/2000`}
+                      <div className="composer-attachments">
+                        <label className="upload-label" title="Attach an image">
+                          ＋ Add image
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            hidden
+                            onChange={(e) => setPostImage(e.target.files?.[0] || null)}
+                          />
+                        </label>
+                        <label className="upload-label" title="Attach an audio file">
+                          ＋ Add audio
+                          <input
+                            type="file"
+                            accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/ogg,audio/webm"
+                            hidden
+                            onChange={(e) => setPostAudio(e.target.files?.[0] || null)}
+                          />
+                        </label>
+                      </div>
+                      <span className="muted small composer-file-names">
+                        {[postImage?.name, postAudio?.name].filter(Boolean).join(" · ") || `${postText.length}/2000`}
                       </span>
                       <button
                         type="submit"
                         className="btn btn-dark btn-sm"
-                        disabled={posting || (!postText.trim() && !postTitle.trim() && !postImage)}
+                        disabled={posting || (!postText.trim() && !postTitle.trim() && !postLink.trim() && !postImage && !postAudio)}
                       >
-                        {posting ? "Publishing…" : "Publish post ↗"}
+                        {posting ? "Submitting…" : canPost ? "Publish post ↗" : "Queue post ↗"}
                       </button>
                     </div>
                   </form>
@@ -524,7 +551,7 @@ export default function App() {
               {/* Feed Heading with Sorting */}
               <div className="feed-heading">
                 <div className="feed-heading-left">
-                  <h2>Community Posts</h2>
+                  <h2>{currentCommunity.name === "General" ? "General Feed" : `${currentCommunity.name} Posts`}</h2>
                   <span className="posts-count">
                     {posts.length} {posts.length === 1 ? "post" : "posts"}
                   </span>
@@ -599,7 +626,7 @@ export default function App() {
             </p>
             <div className="rule-row">
               <span>Posting threshold</span>
-              <strong>+{eligibility?.threshold || 5} net score</strong>
+              <strong>2 upvotes</strong>
             </div>
             <div className="rule-row">
               <span>Identity</span>
@@ -617,7 +644,8 @@ export default function App() {
 
           <div className="profile-card">
             <div className="avatar large">{user.username.slice(0, 1).toUpperCase()}</div>
-            <h3>{user.username}</h3>
+            <h3>{user.displayName || user.username}</h3>
+            <span className="profile-username">@{user.username}</span>
             <span className="verified-label">● Community member</span>
             <p className="profile-bio muted small">
               {user.bio ? user.bio : "Your reputation grows as the community upvotes your contributions."}

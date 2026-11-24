@@ -1,17 +1,17 @@
 import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readStore, writeStore, id, now } from "./data/store.js";
-import { requireAuth } from "./middleware/auth.js";
+import { requireAuth, optionalAuth } from "./middleware/auth.js";
 import { fail, asyncRoute } from "./utils/http.js";
-import { eligibilityFor } from "./services/eligibility.js";
+import { eligibilityFor, promotePendingPostIfEligible } from "./services/eligibility.js";
+import logger from "./config/logger.js";
 
 const router = express.Router();
-const threshold = Math.max(1, Number.parseInt(process.env.POST_THRESHOLD || "2", 10));
+const UPVOTE_THRESHOLD = 2;
+const legacyUserId = (user) => user?.legacyId || user?.id || null;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = process.env.UPLOAD_DIR
@@ -31,7 +31,11 @@ const ALLOWED_CATEGORIES = ["Discussion", "Question", "Resource"];
 
 const publicUser = (u) => ({
   id: u.id,
+  // mongoId lets migrated accounts match their legacy-authored content
+  // without exposing password data or changing historical content IDs.
+  ...(u.mongoId ? { mongoId: u.mongoId } : {}),
   username: u.username,
+  displayName: u.displayName || "",
   bio: u.bio || "",
   createdAt: u.createdAt
 });
@@ -55,7 +59,8 @@ const publicPost = (p, store, viewerId) => {
     commentCount: commentsForPost.length,
     myVote: (store.votes || []).find((v) => v.postId === p.id && v.userId === viewerId)?.value || 0,
     createdAt: p.createdAt,
-    updatedAt: p.updatedAt || null
+    updatedAt: p.updatedAt || null,
+    status: p.status || "active"
   };
 };
 
@@ -67,127 +72,6 @@ const publicComment = (c, store) => ({
   createdAt: c.createdAt
 });
 
-function optionalAuth(req, _res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (token) {
-    try {
-      req.user = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-      /* viewer token invalid; continue anonymously */
-    }
-  }
-  next();
-}
-
-// ----------------- Authentication & Profile Routes -----------------
-
-router.post("/auth/register", asyncRoute(async (req, res) => {
-  const username = String(req.body.username || "").trim();
-  const email = String(req.body.email || "").trim().toLowerCase();
-  const password = String(req.body.password || "");
-
-  if (username.length < 3 || username.length > 24 || !/^[a-zA-Z0-9_]+$/.test(username)) {
-    return fail(res, 400, "INVALID_USERNAME", "Username must be 3–24 characters and use letters, numbers, or underscores.");
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return fail(res, 400, "INVALID_EMAIL", "Enter a valid email address.");
-  }
-  if (password.length < 8) {
-    return fail(res, 400, "WEAK_PASSWORD", "Password must contain at least 8 characters.");
-  }
-
-  const store = await readStore();
-  if (store.users.some((u) => u.username.toLowerCase() === username.toLowerCase() || u.email === email)) {
-    return fail(res, 409, "ACCOUNT_EXISTS", "That username or email is already registered.");
-  }
-
-  const user = {
-    id: id(),
-    username,
-    email,
-    bio: "",
-    passwordHash: await bcrypt.hash(password, 10),
-    createdAt: now()
-  };
-  store.users.push(user);
-  await writeStore(store);
-
-  const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.status(201).json({
-    token,
-    user: { id: user.id, username: user.username, email: user.email, bio: "", createdAt: user.createdAt }
-  });
-}));
-
-router.post("/auth/login", asyncRoute(async (req, res) => {
-  const login = String(req.body.login || "").trim().toLowerCase();
-  const password = String(req.body.password || "");
-
-  if (!login || !password) {
-    return fail(res, 400, "MISSING_FIELDS", "Username/email and password are required.");
-  }
-
-  const store = await readStore();
-  const user = store.users.find((u) => u.username.toLowerCase() === login || u.email === login);
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return fail(res, 401, "INVALID_CREDENTIALS", "Username/email or password is incorrect.");
-  }
-
-  const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.json({
-    token,
-    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt }
-  });
-}));
-
-router.get("/auth/me", requireAuth, asyncRoute(async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((u) => u.id === req.user.id);
-  if (!user) return fail(res, 404, "USER_NOT_FOUND", "User not found.");
-  res.json({
-    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt }
-  });
-}));
-
-router.patch("/auth/profile", requireAuth, asyncRoute(async (req, res) => {
-  const store = await readStore();
-  const user = store.users.find((u) => u.id === req.user.id);
-  if (!user) return fail(res, 404, "USER_NOT_FOUND", "User not found.");
-
-  const username = req.body.username !== undefined ? String(req.body.username).trim() : null;
-  const bio = req.body.bio !== undefined ? String(req.body.bio).trim() : null;
-
-  if (username !== null) {
-    if (username.length < 3 || username.length > 24 || !/^[a-zA-Z0-9_]+$/.test(username)) {
-      return fail(res, 400, "INVALID_USERNAME", "Username must be 3–24 characters and use letters, numbers, or underscores.");
-    }
-    const conflict = store.users.find(
-      (u) => u.id !== user.id && u.username.toLowerCase() === username.toLowerCase()
-    );
-    if (conflict) {
-      return fail(res, 409, "USERNAME_TAKEN", "That username is already taken.");
-    }
-    user.username = username;
-  }
-
-  if (bio !== null) {
-    if (bio.length > 250) {
-      return fail(res, 400, "BIO_TOO_LONG", "Bio must be 250 characters or fewer.");
-    }
-    user.bio = bio;
-  }
-
-  user.updatedAt = now();
-  await writeStore(store);
-
-  const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.json({
-    user: { id: user.id, username: user.username, email: user.email, bio: user.bio || "", createdAt: user.createdAt },
-    token,
-    message: "Profile updated successfully."
-  });
-}));
 
 // ----------------- Data Persistence & Backup Routes -----------------
 
@@ -269,9 +153,9 @@ router.post("/communities/:id/join", requireAuth, asyncRoute(async (req, res) =>
   if (!store.communities.some((c) => c.id === req.params.id)) {
     return fail(res, 404, "COMMUNITY_NOT_FOUND", "Community not found.");
   }
-  let membership = store.memberships.find((m) => m.userId === req.user.id && m.communityId === req.params.id);
+  let membership = store.memberships.find((m) => m.userId === legacyUserId(req.user) && m.communityId === req.params.id);
   if (!membership) {
-    membership = { id: id(), userId: req.user.id, communityId: req.params.id, status: "active", joinedAt: now() };
+    membership = { id: id(), userId: legacyUserId(req.user), communityId: req.params.id, status: "active", joinedAt: now() };
     store.memberships.push(membership);
     await writeStore(store);
   }
@@ -283,7 +167,7 @@ router.get("/communities/:id/eligibility", requireAuth, asyncRoute(async (req, r
   if (!store.communities.some((c) => c.id === req.params.id)) {
     return fail(res, 404, "COMMUNITY_NOT_FOUND", "Community not found.");
   }
-  res.json(eligibilityFor(store, req.user.id, req.params.id, threshold));
+  res.json(eligibilityFor(store, legacyUserId(req.user), req.params.id, UPVOTE_THRESHOLD));
 }));
 
 // ----------------- Post Routes (CRUD + Sorting) -----------------
@@ -295,7 +179,10 @@ router.get("/communities/:id/posts", optionalAuth, asyncRoute(async (req, res) =
   }
 
   const sortBy = String(req.query.sort || "latest").toLowerCase();
-  const communityPosts = store.posts.filter((p) => p.communityId === req.params.id && p.status === "active");
+  const viewerId = legacyUserId(req.user);
+  const communityPosts = store.posts.filter((p) =>
+    p.communityId === req.params.id && (p.status === "active" || (p.status === "pending" && p.authorId === viewerId))
+  );
 
   if (sortBy === "top") {
     communityPosts.sort((a, b) => {
@@ -310,16 +197,17 @@ router.get("/communities/:id/posts", optionalAuth, asyncRoute(async (req, res) =
   }
 
   res.json({
-    posts: communityPosts.map((p) => publicPost(p, store, req.user?.id || null)),
+    posts: communityPosts.map((p) => publicPost(p, store, viewerId)),
     sortBy
   });
 }));
 
 router.get("/posts/:id", optionalAuth, asyncRoute(async (req, res) => {
   const store = await readStore();
-  const post = store.posts.find((p) => p.id === req.params.id && p.status === "active");
+  const viewerId = legacyUserId(req.user);
+  const post = store.posts.find((p) => p.id === req.params.id && (p.status === "active" || (p.status === "pending" && p.authorId === viewerId)));
   if (!post) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
-  res.json({ post: publicPost(post, store, req.user?.id || null) });
+  res.json({ post: publicPost(post, store, viewerId) });
 }));
 
 router.post("/communities/:id/posts", requireAuth, upload.single("image"), asyncRoute(async (req, res) => {
@@ -328,7 +216,7 @@ router.post("/communities/:id/posts", requireAuth, upload.single("image"), async
   if (!community) return fail(res, 404, "COMMUNITY_NOT_FOUND", "Community not found.");
 
   const membership = store.memberships.find(
-    (m) => m.userId === req.user.id && m.communityId === community.id && m.status === "active"
+    (m) => m.userId === legacyUserId(req.user) && m.communityId === community.id && m.status === "active"
   );
   if (!membership) return fail(res, 403, "JOIN_REQUIRED", "Join this community before posting.");
 
@@ -359,14 +247,15 @@ router.post("/communities/:id/posts", requireAuth, upload.single("image"), async
     return fail(res, 400, "EMPTY_POST", "Please provide a title, text, or an image.");
   }
 
-  const eligibility = eligibilityFor(store, req.user.id, community.id, threshold);
-  if (!eligibility.canPost) {
-    return fail(res, 422, "POSTING_LOCKED", "Your latest post has not reached the required score.", eligibility);
+  const pendingExists = store.posts.some((item) => item.authorId === legacyUserId(req.user) && item.status === "pending");
+  if (pendingExists) {
+    return fail(res, 409, "PENDING_POST_EXISTS", "You already have a post waiting for two upvotes on your latest published post.");
   }
 
+  const eligibility = eligibilityFor(store, legacyUserId(req.user), community.id, UPVOTE_THRESHOLD);
   const post = {
     id: id(),
-    authorId: req.user.id,
+    authorId: legacyUserId(req.user),
     communityId: community.id,
     title: title || null,
     category,
@@ -375,14 +264,24 @@ router.post("/communities/:id/posts", requireAuth, upload.single("image"), async
     imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
     upvoteCount: 0,
     downvoteCount: 0,
-    status: "active",
-    createdAt: now()
+    status: eligibility.canPost ? "active" : "pending",
+    createdAt: now(),
+    publishedAt: eligibility.canPost ? now() : null
   };
 
   store.posts.push(post);
   await writeStore(store);
 
-  res.status(201).json({ post: publicPost(post, store, req.user.id) });
+  if (!eligibility.canPost) {
+    return res.status(202).json({
+      success: true,
+      message: "Your post is saved privately. It will be published after your latest published post receives two upvotes.",
+      post: publicPost(post, store, legacyUserId(req.user)),
+      eligibility
+    });
+  }
+
+  return res.status(201).json({ success: true, message: "Post published successfully.", post: publicPost(post, store, legacyUserId(req.user)) });
 }));
 
 // Update a post (PATCH /api/posts/:id)
@@ -392,7 +291,7 @@ router.patch("/posts/:id", requireAuth, upload.single("image"), asyncRoute(async
   if (!post) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
 
   // Verify ownership
-  if (post.authorId !== req.user.id) {
+  if (post.authorId !== legacyUserId(req.user)) {
     return fail(res, 403, "FORBIDDEN", "You can only edit your own posts.");
   }
 
@@ -453,7 +352,7 @@ router.patch("/posts/:id", requireAuth, upload.single("image"), asyncRoute(async
   await writeStore(store);
 
   res.json({
-    post: publicPost(post, store, req.user.id),
+    post: publicPost(post, store, legacyUserId(req.user)),
     message: "Post updated successfully."
   });
 }));
@@ -461,13 +360,13 @@ router.patch("/posts/:id", requireAuth, upload.single("image"), asyncRoute(async
 // Delete a post (DELETE /api/posts/:id)
 router.delete("/posts/:id", requireAuth, asyncRoute(async (req, res) => {
   const store = await readStore();
-  const postIndex = store.posts.findIndex((p) => p.id === req.params.id && p.status === "active");
+  const postIndex = store.posts.findIndex((p) => p.id === req.params.id && ["active", "pending"].includes(p.status));
   if (postIndex === -1) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
 
   const post = store.posts[postIndex];
 
   // Verify ownership
-  if (post.authorId !== req.user.id) {
+  if (post.authorId !== legacyUserId(req.user)) {
     return fail(res, 403, "FORBIDDEN", "You can only delete your own posts.");
   }
 
@@ -505,11 +404,11 @@ router.put("/posts/:id/vote", requireAuth, asyncRoute(async (req, res) => {
   const store = await readStore();
   const post = store.posts.find((p) => p.id === req.params.id && p.status === "active");
   if (!post) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
-  if (post.authorId === req.user.id) {
+  if (post.authorId === legacyUserId(req.user)) {
     return fail(res, 403, "SELF_VOTE", "You cannot vote on your own post.");
   }
 
-  let vote = store.votes.find((v) => v.postId === post.id && v.userId === req.user.id);
+  let vote = store.votes.find((v) => v.postId === post.id && v.userId === legacyUserId(req.user));
   const previous = vote?.value || 0;
 
   if (previous !== value) {
@@ -525,16 +424,23 @@ router.put("/posts/:id/vote", requireAuth, asyncRoute(async (req, res) => {
       store.votes.push({
         id: id(),
         postId: post.id,
-        userId: req.user.id,
+        userId: legacyUserId(req.user),
         value,
         createdAt: now(),
         updatedAt: now()
       });
     }
-    await writeStore(store);
   }
 
-  res.json({ post: publicPost(post, store, req.user.id), eligibilityChanged: true });
+  const promotedPost = promotePendingPostIfEligible(store, post.authorId, now());
+  await writeStore(store);
+
+  res.json({
+    success: true,
+    post: publicPost(post, store, legacyUserId(req.user)),
+    eligibilityChanged: true,
+    promotedPost: promotedPost ? publicPost(promotedPost, store, legacyUserId(req.user)) : null
+  });
 }));
 
 router.delete("/posts/:id/vote", requireAuth, asyncRoute(async (req, res) => {
@@ -542,15 +448,22 @@ router.delete("/posts/:id/vote", requireAuth, asyncRoute(async (req, res) => {
   const post = store.posts.find((p) => p.id === req.params.id && p.status === "active");
   if (!post) return fail(res, 404, "POST_NOT_FOUND", "Post not found.");
 
-  const index = store.votes.findIndex((v) => v.postId === post.id && v.userId === req.user.id);
+  const index = store.votes.findIndex((v) => v.postId === post.id && v.userId === legacyUserId(req.user));
   if (index >= 0) {
     const [vote] = store.votes.splice(index, 1);
     if (vote.value === 1) post.upvoteCount = Math.max(0, (post.upvoteCount || 0) - 1);
     if (vote.value === -1) post.downvoteCount = Math.max(0, (post.downvoteCount || 0) - 1);
-    await writeStore(store);
   }
 
-  res.json({ post: publicPost(post, store, req.user.id), eligibilityChanged: true });
+  const promotedPost = promotePendingPostIfEligible(store, post.authorId, now());
+  await writeStore(store);
+
+  res.json({
+    success: true,
+    post: publicPost(post, store, legacyUserId(req.user)),
+    eligibilityChanged: true,
+    promotedPost: promotedPost ? publicPost(promotedPost, store, legacyUserId(req.user)) : null
+  });
 }));
 
 // ----------------- Comment Routes -----------------
@@ -585,7 +498,7 @@ router.post("/posts/:id/comments", requireAuth, asyncRoute(async (req, res) => {
   const comment = {
     id: id(),
     postId: post.id,
-    authorId: req.user.id,
+    authorId: legacyUserId(req.user),
     text,
     createdAt: now()
   };
@@ -609,7 +522,7 @@ router.delete("/comments/:id", requireAuth, asyncRoute(async (req, res) => {
   }
 
   // Security: only the author of the comment may delete it
-  if (comment.authorId !== req.user.id) {
+  if (comment.authorId !== legacyUserId(req.user)) {
     return fail(res, 403, "FORBIDDEN", "You can only delete your own comments.");
   }
 
@@ -633,8 +546,9 @@ router.use((err, _req, res, _next) => {
   if (err.message?.startsWith("Only JPG")) {
     return fail(res, 400, "INVALID_IMAGE_TYPE", err.message);
   }
-  console.error(err);
-  return fail(res, 500, "INTERNAL_ERROR", "Something went wrong.");
+  const status = Number(err?.status) || 500;
+  logger.error("Legacy content route failed", { message: err?.message, stack: err?.stack, status });
+  return fail(res, status, err?.code || "INTERNAL_ERROR", status >= 500 ? "Something went wrong." : err.message);
 });
 
 export default router;

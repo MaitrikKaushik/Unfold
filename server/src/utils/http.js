@@ -1,5 +1,5 @@
 export function fail(res, status, code, message, details) {
-  return res.status(status).json({ error: { code, message, ...(details ? { details } : {}) } });
+  return res.status(status).json({ success: false, error: { code, message, ...(details ? { details } : {}) } });
 }
 
 export function asyncRoute(fn) {

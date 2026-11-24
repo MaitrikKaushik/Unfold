@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
+import { getPublicUsersForLegacyFeed, isMongoReady } from "../config/mongo.js";
+import logger from "../config/logger.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +42,25 @@ function sanitizeStore(data) {
   return data;
 }
 
+async function attachMongoUsers(data) {
+  const sanitized = sanitizeStore(data);
+  if (!isMongoReady()) return sanitized;
+
+  const byId = new Map();
+  for (const user of sanitized.users) {
+    byId.set(user.id, {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName || "",
+      bio: user.bio || "",
+      createdAt: user.createdAt
+    });
+  }
+  const mongoUsers = await getPublicUsersForLegacyFeed();
+  for (const user of mongoUsers) byId.set(user.id, user);
+  return { ...sanitized, users: [...byId.values()] };
+}
+
 export async function readStore() {
   await fs.mkdir(dataDir, { recursive: true });
 
@@ -47,16 +68,16 @@ export async function readStore() {
   try {
     const raw = await fs.readFile(storePath, "utf8");
     const data = JSON.parse(raw);
-    return sanitizeStore(data);
+    return attachMongoUsers(data);
   } catch (err) {
     if (err.code !== "ENOENT") {
       // If store.json is corrupted, attempt recovery from backup
       try {
-        console.warn("[Unfold Store] store.json read error, attempting backup recovery:", err.message);
+        logger.warn("Legacy store read failed; attempting backup recovery", { message: err.message });
         const backupRaw = await fs.readFile(backupPath, "utf8");
         const recovered = sanitizeStore(JSON.parse(backupRaw));
         await writeStore(recovered);
-        return recovered;
+        return attachMongoUsers(recovered);
       } catch {
         throw err;
       }
@@ -65,12 +86,12 @@ export async function readStore() {
     // 2. store.json does not exist yet. Check if DATA_JSON environment variable is provided
     if (process.env.DATA_JSON) {
       try {
-        console.log("[Unfold Store] Initializing store from DATA_JSON environment variable.");
+        logger.info("Initializing legacy store from DATA_JSON environment variable.");
         const envData = sanitizeStore(JSON.parse(process.env.DATA_JSON));
         await writeStore(envData);
-        return envData;
+        return attachMongoUsers(envData);
       } catch (e) {
-        console.warn("[Unfold Store] Failed parsing DATA_JSON environment variable:", e.message);
+        logger.warn("Failed parsing DATA_JSON environment variable", { message: e.message });
       }
     }
 
@@ -79,12 +100,12 @@ export async function readStore() {
       const seedRaw = await fs.readFile(seedPath, "utf8");
       const seedData = sanitizeStore(JSON.parse(seedRaw));
       await writeStore(seedData);
-      return seedData;
+      return attachMongoUsers(seedData);
     } catch {
       // 4. Fallback to code defaults
       const data = initial();
       await writeStore(data);
-      return data;
+      return attachMongoUsers(data);
     }
   }
 }
@@ -92,7 +113,19 @@ export async function readStore() {
 export async function writeStore(data) {
   await fs.mkdir(dataDir, { recursive: true });
   const sanitized = sanitizeStore(data);
-  const payload = JSON.stringify(sanitized, null, 2);
+  // MongoDB owns accounts. JSON persists only the public legacy user fields needed
+  // to render pre-migration content; never write emails or password hashes.
+  const persisted = {
+    ...sanitized,
+    users: (sanitized.users || []).map((user) => ({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName || "",
+      bio: user.bio || "",
+      createdAt: user.createdAt
+    }))
+  };
+  const payload = JSON.stringify(persisted, null, 2);
 
   // Atomic write to store.json
   const temp = `${storePath}.${crypto.randomUUID()}.tmp`;

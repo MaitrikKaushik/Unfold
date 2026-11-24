@@ -1,163 +1,353 @@
-# Unfold — Simple Community Discussions
+# Unfold — Community-Driven Social Platform
 
-**Unfold** is a clean, intentional community discussion platform inspired by Reddit, OneHack, and Instagram. Built as an academic full-stack project, Unfold demonstrates core backend and web development concepts without unnecessary architectural complexity.
+**Unfold** is a community-driven social platform where users publish content in a general feed or interest-based communities, build social connections and earn the ability to publish again through community voting.
 
-The platform uses a reputation-based contribution model: a user's first post in any community is permitted upon joining, but subsequent posts in that community require the author's latest post to reach a net score of **+5** through peer upvotes.
+> **Publishing rule (locked):** Every user can publish their first post for free. Each subsequent post is unlocked when the user's latest published post has at least **2 distinct upvotes**. Downvotes affect the displayed net score, but do not cancel or reduce the two-upvote requirement. This rule is global across General and community posts.
 
----
+## 1. Technology architecture
 
-## 🛠 Technology Stack
+| Layer | Technology | Responsibility |
+|---|---|---|
+| Frontend | React 18 + Vite | Single-page web application |
+| UI | Bootstrap 5 + custom CSS | Responsive components and Peachy Community design system |
+| Client API | Fetch API | Calls the versioned REST API with cookie credentials |
+| Backend | Node.js + Express | Modular monolith and REST APIs |
+| Primary database | MongoDB + Mongoose | User accounts, communities, memberships, posts, votes, comments and media metadata |
+| Relational database | PostgreSQL | Moderation reports and moderation audit records |
+| Authentication | bcryptjs + JWT HttpOnly cookie | Password hashing and session authentication |
+| Media | Multer + Cloudinary | File validation/handling and cloud media storage |
+| Real-time | Socket.IO (integration phase) | Direct messages and live notifications |
+| Cache | Redis (optional during local foundation work) | Feed/search caching |
+| Logging | Winston + Morgan | Structured application logs and HTTP request logs |
+| Verification | Source-level checks and documented acceptance criteria | Consistent module contracts without requiring manual API-client testing |
+| DevOps | Docker + GitHub Actions (integration phase) | Reproducible runtime and CI workflow |
 
-- **Frontend:** React (Vite), JavaScript (ES Modules), Bootstrap 5, Custom CSS, Fetch API
-- **Backend:** Node.js, Express.js, REST APIs, JSON Web Tokens (JWT), `bcryptjs`, `multer`
-- **Data Storage:** Atomic JSON-file persistence (`store.json`)
+The backend is a **modular monolith**: one Express server, one authentication layer and shared infrastructure. Modules must not create independent server instances or duplicate the User model. MongoDB Atlas or a local replica set is required because post creation and vote updates use MongoDB transactions.
 
----
+## 2. Current foundation status
 
-## 🚀 Getting Started
+### Implemented in the current project package
 
-### Prerequisites
-- Node.js 20+ (Node 20, 22, or 24 recommended)
-- npm
+- Username/password registration with server-generated unique usernames.
+- bcrypt password hashing and JWT authentication using an HttpOnly cookie.
+- Logout token-version invalidation and current-user/profile endpoints.
+- MongoDB/Mongoose models for User, Community, Membership, Post, Vote, Comment and MediaAsset.
+- Default Technology, Programming and Gaming communities seeded on server start, plus a virtual General destination.
+- MongoDB-backed General and community post feeds.
+- Text, image and audio publishing; Multer memory uploads and Cloudinary media storage.
+- Post editing/removal, comments and soft-deletion behaviour.
+- One vote per user per post, vote switching/removal and self-vote prevention.
+- Global two-distinct-upvote publishing gate, one pending post per author and automatic pending-post publication.
+- Shared Peachy Community light/dark interface tokens and audio attachment rendering.
+- PostgreSQL moderation schema/configuration, Redis configuration and Winston/Morgan logging.
+- Docker Compose replica-set configuration and GitHub Actions workflow scaffolding.
 
-### 1. Start Backend Server
+### Remaining module integration work
+
+- Community creation, richer community discovery/ownership and full membership UI (Person 3).
+- Follow/unfollow and the following feed (Person 3).
+- Direct messaging, Socket.IO live events and notifications (Person 3 plus shared integration).
+- PostgreSQL moderation endpoints/UI and audit workflow completion.
+- Redis feed-cache reads, writes and invalidation.
+- Final deployment secrets, end-to-end integration and report evidence.
+
+The legacy JSON store and routes remain in the repository as a compatibility layer for old endpoints/data export. The active `/api/v1` post, vote, comment, community-list and membership foundation routes are mounted ahead of those legacy routes and use MongoDB.
+
+## 3. Requirements
+
+- Node.js 20 or later (Node 22 LTS recommended).
+- npm.
+- MongoDB Atlas or a local MongoDB replica set (transactions are used by post/vote writes).
+- PostgreSQL database (needed for moderation endpoints/CLO03 SQL demonstration).
+- Redis instance (needed when caching is integrated).
+- Cloudinary account and API credentials (required for image/audio uploads; the rest of the API can run without them).
+
+## 4. Environment configuration
+
+### Backend
+
 ```bash
 cd server
 cp .env.example .env
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env`. The backend `.env.example` contains all service variables. Use a MongoDB replica-set URI for local development or MongoDB Atlas.
+
+Set at least:
+
+```env
+PORT=4000
+NODE_ENV=development
+CLIENT_ORIGIN=http://localhost:5173
+JWT_SECRET=replace_with_a_random_secret_at_least_32_characters_long
+JWT_EXPIRES_IN=7d
+COOKIE_SAME_SITE=lax
+BCRYPT_ROUNDS=12
+MONGODB_URI=mongodb://127.0.0.1:27017/unfold?replicaSet=rs0
+```
+
+Optional services:
+
+```env
+DATABASE_URL=postgresql://username:password@localhost:5432/unfold
+PG_POOL_MAX=5
+PGSSLMODE=disable
+REDIS_URL=redis://127.0.0.1:6379
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+MAX_MEDIA_FILES=5
+MAX_MEDIA_SIZE_MB=25
+```
+
+For production, use a strong randomly generated `JWT_SECRET`, HTTPS, `secure` cookies and an appropriate `COOKIE_SAME_SITE` value. Configure `CLIENT_ORIGIN` to the exact deployed frontend origin. Never commit `.env` files or credentials.
+
+### Frontend
+
+The default development API URL is `http://localhost:4000/api/v1`. To configure it explicitly, copy `client/.env.example` to `client/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:4000/api/v1
+```
+
+## 5. Run locally
+
+Install dependencies separately because the frontend and backend are separate npm projects.
+
+**Terminal 1 — backend:**
+
+```bash
+cd server
 npm install
 npm run dev
 ```
-The Express API runs at `http://localhost:4000`.
 
-To run the automated backend test suite:
-```bash
-npm test
-```
+**Terminal 2 — frontend:**
 
-### 2. Start Frontend Client
-In a second terminal window:
 ```bash
 cd client
 npm install
 npm run dev
 ```
-Open the Vite URL printed in your terminal (typically `http://localhost:5173`).
 
----
+Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The backend listens on port `4000` by default.
 
-## ✨ Features
+### Optional local infrastructure with Docker Compose
 
-### Core Capabilities
-- **Authentication:** Pseudonymous user registration and login with bcrypt password hashing and 7-day JWT tokens.
-- **Communities:** Three seeded communities (`Technology`, `Programming`, `Gaming`). Users can browse publicly or join to participate.
-- **+5 Posting Gate Rule:** A user can create their first post immediately upon joining a community. Their subsequent post in that community unlocks only after their latest post achieves a net upvote score of +5 (configurable via `POST_THRESHOLD` in `.env`).
-- **Voting System:** Upvote (+1) or downvote (-1) posts. Switch or retract votes. Authors cannot vote on their own posts.
-- **Media Attachments:** Upload optional images (JPG, PNG, WEBP, GIF, max 3MB) processed safely via Multer.
+From the repository root:
 
-### New Features Added
-1. **Feature A — Post Categories & Resource Links:**
-   - Choose between **Discussion**, **Question**, or **Resource** when publishing.
-   - For **Resource** posts, add an optional website URL with automatic `https://` formatting and clickable display.
-   - Distinctive visual badges for each category on post cards.
-2. **Feature B — Comments:**
-   - Read discussions and view total comment counts directly on post cards.
-   - Authenticated users can post comments.
-   - Authors can delete their own comments (strictly protected on the backend so users cannot delete others' comments).
-   - Comments persist in the JSON store across server restarts and page refreshes.
-3. **Feature C — Simple Feed Sorting:**
-   - **Latest:** View posts chronologically with the newest posts first.
-   - **Top:** View posts sorted by net score (`upvotes - downvotes`) descending.
-4. **Feature D — Post Management (Edit & Delete):**
-   - Three-dot menu on posts authored by the logged-in user.
-   - **Edit Post:** Inline edit form pre-populated with current title, text, category, resource URL, and image. Supports updating or removing attached images.
-   - **Delete Post:** Protected deletion with confirmation dialog, removing associated votes and comments, safely unlinking non-shared media files.
-5. **Feature E — Settings & Appearance:**
-   - Dedicated Settings view accessible via sidebar, header, and profile card.
-   - View registered email and update username and bio with conflict detection.
-   - Persistent Light/Dark theme toggle saved in `localStorage`.
+```bash
+docker compose up --build -d
+```
 
----
+This starts MongoDB, PostgreSQL, Redis and the Express API. Then run the Vite client locally using the steps above. The Compose credentials are development-only and must never be reused in production. To stop the services:
 
-## 📚 College Syllabus Demonstration
+```bash
+docker compose down
+```
 
-This project directly demonstrates key concepts in web and backend development:
+Health check:
 
-| Syllabus Topic | Implementation in Unfold |
-| :--- | :--- |
-| **JavaScript & Async Programming** | Modern ES Modules (`import`/`export`), `async`/`await`, Promises, array methods (`filter`, `map`, `some`, `find`, `sort`). |
-| **Node.js & Express.js** | Modular router (`server/src/routes.js`), Express server configuration, static asset serving (`/uploads`), environment variable loading with `dotenv`. |
-| **RESTful API Design** | Predictable endpoint naming, resource hierarchy (`/communities/:id/posts`, `/posts/:id/comments`), appropriate HTTP verbs (`GET`, `POST`, `PUT`, `DELETE`), and standard HTTP status codes (`200`, `201`, `400`, `401`, `403`, `404`, `409`, `422`, `500`). |
-| **Middleware** | `requireAuth` for protecting write endpoints; `optionalAuth` for attaching viewer identity to public feeds; `multer` for secure multipart file upload handling; central error-handling middleware. |
-| **Authentication & Passwords** | `bcryptjs` salted password hashing (work factor 10) on registration and comparison on login; signed JWT tokens stored securely. |
-| **Input Validation** | Request body validation for username constraints, email format, password length, comment length, link length, and image mimetype/size limits. |
-| **Authorization & Ownership** | Backend enforcement preventing users from voting on their own posts and ensuring users can only delete comments they authored. |
-| **CRUD Operations** | Complete Create, Read, Update, and Delete lifecycles across Users, Communities, Posts, Votes, and Comments. |
-| **Data Persistence** | File-system persistence using atomic temporary-file writes and renames (`fs.writeFile` + `fs.rename`) to guard against file corruption. |
+```text
+GET http://localhost:4000/api/v1/health
+```
 
----
+## 6. Authentication contract
 
-## 📡 REST API Reference
+All routes are prefixed with `/api/v1`.
 
-### Authentication & Settings
-- `POST /api/auth/register` — Create account (`{ username, email, password }`)
-- `POST /api/auth/login` — Sign in (`{ login, password }`)
-- `GET /api/auth/me` — Get current user profile *(requires Bearer token)*
-- `PATCH /api/auth/profile` — Update username & bio *(requires Bearer token)*
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| POST | `/auth/register` | Public | Register using password and optional display name; server generates username |
+| POST | `/auth/login` | Public | Login using generated username and password |
+| POST | `/auth/logout` | Required | Invalidate session and clear cookie |
+| GET | `/auth/me` | Required | Return current safe user profile |
+| PATCH | `/auth/profile` | Required | Update display name and bio |
 
-### Communities
-- `GET /api/communities` — List all communities
-- `POST /api/communities/:id/join` — Join a community *(requires Bearer token)*
-- `GET /api/communities/:id/eligibility` — Check user's posting gate status *(requires Bearer token)*
+### Registration request
 
-### Posts
-- `GET /api/communities/:id/posts?sort=latest|top` — View posts (sorted by newest or highest score)
-- `GET /api/posts/:id` — Get single post details
-- `POST /api/communities/:id/posts` — Create a post (`title`, `category`, `link`, `text`, optional `image` file) *(requires Bearer token)*
-- `PATCH /api/posts/:id` — Edit own post (`title`, `category`, `link`, `text`, optional `image` file, `removeImage`) *(requires Bearer token; author only)*
-- `DELETE /api/posts/:id` — Delete own post *(requires Bearer token; author only)*
-- `PUT /api/posts/:id/vote` — Vote on post (`{ "value": 1 }` or `{ "value": -1 }`) *(requires Bearer token)*
-- `DELETE /api/posts/:id/vote` — Retract active vote *(requires Bearer token)*
+```json
+{
+  "displayName": "Optional display name",
+  "password": "minimum-eight-characters"
+}
+```
 
-### Comments
-- `GET /api/posts/:id/comments` — View comments for a post
-- `POST /api/posts/:id/comments` — Add a comment (`{ "text": "..." }`) *(requires Bearer token)*
-- `DELETE /api/comments/:id` — Delete own comment *(requires Bearer token; author only)*
+The client does **not** choose a username. The server generates a unique username such as `unfold_a1b2c3d4e5f6`, saves the bcrypt hash and returns the generated username once in the registration response. The user must save it for subsequent login.
 
-### Data Persistence & Backup
-- `GET /api/data/status` — Get storage engine status and record counts
-- `GET /api/data/export` — Download JSON backup of the active database *(requires Bearer token)*
-- `POST /api/data/restore` — Restore database from a JSON backup *(requires Bearer token)*
+### Login request
 
----
+```json
+{
+  "username": "unfold_a1b2c3d4e5f6",
+  "password": "minimum-eight-characters"
+}
+```
 
-## 💾 Data Persistence Across Cloud Redeployments
+### Response shape
 
-Unfold uses clean, syllabus-compliant JSON file persistence (`store.json`).
-When deploying to cloud platforms like **Render**, **Railway**, or **Fly.io**, container filesystems are ephemeral by default — meaning restarting or redeploying spins up a fresh container from the repository.
+```json
+{
+  "success": true,
+  "message": "Welcome back to Unfold.",
+  "data": {
+    "user": {
+      "id": "mongo-user-id",
+      "username": "unfold_a1b2c3d4e5f6",
+      "displayName": "Optional display name",
+      "bio": "",
+      "role": "user"
+    }
+  }
+}
+```
 
-Unfold provides three solutions to ensure your data is never lost:
+A JWT is set as the `unfold_session` HttpOnly cookie. The browser sends it using `credentials: "include"`. The client stores only a non-sensitive profile cache in localStorage, never the JWT.
 
-1. **In-App Backup & Restore (Works on all tiers including Render Free):**
-   - Go to **Settings > Database & Persistence** in the application.
-   - Click **Export Database Backup (JSON)** to download your complete data snapshot (`unfold-backup.json`).
-   - If a redeployment resets your container, simply upload your backup file in Settings and click **Restore Database**. All users, posts, comments, and votes are rehydrated in seconds.
+## 7. Reputation policy / backend contract
 
-2. **Persistent Disk Volumes (Render Starter / Paid Tier):**
-   - Mount a Render Disk at `/var/data`.
-   - Set `DATA_DIR=/var/data` and `UPLOAD_DIR=/var/data/uploads` in your Render Environment Variables.
-   - Data and uploaded images will persist permanently across all git redeployments and container restarts.
+1. First published post is free (user must still be a member to post inside a community).
+2. To publish another post, the user's latest published post across all feeds/communities must have at least 2 upvotes from distinct accounts.
+3. A vote is one of `1` (upvote) or `-1` (downvote); a user may change or remove their vote.
+4. One account can hold at most one vote per post. Self-voting is rejected.
+5. Downvotes affect the visible net score (`upvotes - downvotes`) only. They do not affect posting eligibility.
+6. If a user submits a post before reaching the threshold, the backend stores one pending post, visible only to its author. It is automatically published when the latest published post receives the second upvote.
+7. Only one pending post per user is allowed. The gate is global, not per community.
+8. A published post stays published if its score later decreases.
 
-3. **Environment Variable Seed (`DATA_JSON`):**
-   - Export your database JSON from Settings, and paste the JSON string into the `DATA_JSON` environment variable in your cloud dashboard.
-   - Whenever a fresh container spins up, Unfold will automatically detect `DATA_JSON` and initialize the database from it.
+The deterministic business-rule tests are in `server/test-suite.js`:
 
----
+```bash
+cd server
+npm test
+```
 
-## 🧪 Testing the +5 Posting Rule
+## 8. PostgreSQL moderation endpoints
 
-1. Register User A and User B.
-2. Both users join the `Programming` community.
-3. User A creates their first post (allowed immediately).
-4. User A attempts to create a second post immediately (locked; receives a `422 POSTING_LOCKED` error until their previous post achieves a net score of +5).
-5. User B upvotes User A's post. (To simulate reaching +5 quickly during local testing, you can adjust `POST_THRESHOLD=1` in `server/.env` or register additional test accounts).
-6. Once the gate post reaches the required net score, User A's posting status updates to "You're clear to contribute" and publishing unlocks!
+When `DATABASE_URL` is configured, the backend initialises:
+
+- `reports`: report submitted by a user against a post, comment or account.
+- `moderation_actions`: append-only record of a moderator's decision, linked to a report.
+
+| Method | Endpoint | Permission | Purpose |
+|---|---|---|---|
+| POST | `/reports` | Authenticated user | Create a report |
+| GET | `/admin/reports?status=open&limit=20` | Moderator/admin | List reports |
+| PATCH | `/admin/reports/:id` | Moderator/admin | Update status and record action |
+
+The current prototype creates standard users with role `user`. For a local evaluation account, use the controlled CLI command below after creating the account; never allow public registration to choose a privileged role.
+
+```bash
+cd server
+npm run set-role -- unfold_your_generated_username admin
+```
+
+Use `moderator` rather than `admin` when only moderation access is required.
+
+## 9. Legacy account migration
+
+If an existing local JSON `store.json` contains accounts from the previous prototype, configure MongoDB and run this migration **before starting the new application or making any writes to the legacy content store**:
+
+```bash
+cd server
+npm run migrate:legacy-users
+```
+
+The script imports the old username and existing bcrypt hash into MongoDB, records the old ID as `legacyId` and does not need the user's plaintext password. Back up the old store before migrating. The compatibility adapter intentionally strips credential fields when writing public legacy user records; migrating first preserves the original hashes. The migration is optional for a fresh install.
+
+## 10. DevOps foundation
+
+- `server/Dockerfile` containerises the Express API.
+- `docker-compose.yml` runs the API with MongoDB, PostgreSQL and Redis for local evaluation.
+- `.github/workflows/ci.yml` runs backend syntax checks, reputation policy tests and a frontend production build on pushes and pull requests to `main` and `develop`.
+
+The CI workflow is a continuous-integration check. `render.yaml` provides a backend service blueprint, but deployment requires you to configure the exact frontend origin and managed service credentials in Render. Because this API uses credentialed cookies, `CLIENT_ORIGIN` must be the real frontend origin, never `*`. Set `MONGODB_URI`; set `DATABASE_URL` and `REDIS_URL` to enable those services; provide Cloudinary credentials to enable media uploads. The frontend Netlify build uses `client/.env.example` as a reference; set `VITE_API_BASE_URL` to the deployed backend's `/api/v1` URL in Netlify.
+
+## 11. Project structure
+
+```text
+Unfold-main/
+├── client/
+│   ├── src/
+│   │   ├── components/       # Shared and feature UI components
+│   │   ├── services/api.js   # Shared Fetch API client
+│   │   ├── App.jsx
+│   │   └── styles.css        # Shared Peachy Community tokens
+│   └── package.json
+├── server/
+│   ├── src/
+│   │   ├── config/           # MongoDB, PostgreSQL, Redis, Cloudinary, logger
+│   │   ├── middleware/       # Authentication and shared middleware
+│   │   ├── models/           # Mongoose models
+│   │   ├── modules/          # Auth and moderation modules
+│   │   ├── migrations/       # Legacy account migration
+│   │   ├── services/         # Shared business rules
+│   │   ├── data/             # Temporary legacy content adapter
+│   │   ├── routes.js         # Temporary legacy content routes
+│   │   └── server.js         # Express application and service startup
+│   ├── test-suite.js
+│   └── package.json
+└── docs/
+```
+
+The final target architecture adds dedicated `posts`, `communities`, `social`, `messaging` and `notifications` modules. Each team member must use the shared User model, API client, response conventions and design tokens.
+
+## 12. Shared interface system — Peachy Community
+
+Typography: **Plus Jakarta Sans**.
+
+Light palette:
+
+| Token | Value |
+|---|---|
+| Background | `#FFF8F0` |
+| Surface | `#FFFFFF` |
+| Primary plum | `#5B4168` |
+| Peach | `#FFB49A` |
+| Lavender | `#C9B6FF` |
+| Mint | `#A8E6CF` |
+| Text | `#35263E` |
+| Muted | `#786B7C` |
+
+Dark palette:
+
+| Token | Value |
+|---|---|
+| Background | `#1D1523` |
+| Surface | `#291F30` |
+| Soft surface | `#35263E` |
+| Primary lavender | `#C9B6FF` |
+| Peach | `#FFB49A` |
+| Mint | `#A8E6CF` |
+| Text | `#FFF8F0` |
+| Muted | `#B8A7BB` |
+
+Theme preference is stored under `unfold_theme` and applied using `data-theme="light"` or `data-theme="dark"` on the document root. Do not introduce separate module palettes.
+
+## 13. Development rules for team integration
+
+- Use one Express server and the `/api/v1` base path.
+- Reuse `User` from `server/src/models/User.js`; do not create another User model.
+- Reuse `requireAuth` / `optionalAuth` from `server/src/middleware/auth.js`.
+- Reuse the shared Fetch wrapper in `client/src/services/api.js`.
+- Do not store JWTs in localStorage or return password hashes.
+- New module routes must use consistent JSON response and error formats.
+- Validate and sanitise all request input on the server.
+- MongoDB owns users and social-domain collections. PostgreSQL owns the moderation report/audit domain. Do not duplicate the same source-of-truth records across databases.
+- Build new features on the MongoDB/PostgreSQL modules. The older JSON routes remain only as a compatibility path for legacy endpoints; do not add new production features to that adapter.
+- Store media in Cloudinary; store only `publicId`, secure URL, resource type, owner and metadata in MongoDB.
+- Keep `.env`, database credentials and Cloudinary secrets private.
+- Each module must include endpoint examples, ownership boundaries and acceptance criteria before integration. Manual Postman testing is not part of the current agreed workflow.
+
+## 14. Course outcome mapping
+
+| CLO | How Unfold demonstrates it |
+|---|---|
+| CLO01 | React UI, component state, responsive Bootstrap/custom CSS, light/dark theme, Fetch API integration |
+| CLO02 | Node.js, Express modular routing, REST APIs, middleware, JWT, bcrypt, validation and error handling |
+| CLO03 | Mongoose schemas, MongoDB CRUD/indexes/references and PostgreSQL reports/audit tables with SQL queries |
+| CLO04 | Authenticated full-stack integration, CORS/Origin checks, secure cookies, logging, API tests, Redis, Docker and CI/CD as completed in the integration phase |
+
+## 15. Known current limitations
+
+This is an active foundation branch, not the completed project. The versioned `/api/v1` routes for the General/community feeds, post CRUD, voting, comments, membership join/leave and media upload now use MongoDB/Mongoose and Cloudinary. The older JSON compatibility routes remain for legacy paths and any not-yet-migrated features. Community creation/ownership, follow relationships, direct messaging, Socket.IO events, Redis feed caching and the full deployment pipeline remain integration work. PostgreSQL connection/schema setup and Docker Compose scaffolding exist; the complete moderation workflow and deployment configuration still need to be finished.

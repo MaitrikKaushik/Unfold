@@ -1,93 +1,150 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import fs from "node:fs";
+import helmet from "helmet";
+import morgan from "morgan";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import routes from "./routes.js";
+import legacyRoutes from "./routes.js";
+import authRoutes from "./modules/auth/auth.routes.js";
+import moderationRoutes from "./modules/moderation/moderation.routes.js";
+import postsRoutes from "./modules/posts/posts.routes.js";
+import { connectMongo, isMongoReady } from "./config/mongo.js";
+import { initialisePostgres, postgresPool, closePostgres } from "./config/postgres.js";
+import { connectRedis, redisClient, closeRedis } from "./config/redis.js";
+import { configureCloudinary, isCloudinaryConfigured } from "./config/cloudinary.js";
+import { disconnectMongo } from "./config/mongo.js";
+import logger from "./config/logger.js";
+import { seedDefaultCommunities } from "./services/community.service.js";
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 24) {
-  console.error("Set JWT_SECRET in server/.env to a random secret of at least 24 characters.");
+const requiredEnv = ["JWT_SECRET", "MONGODB_URI"];
+const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+if (missingEnv.length) {
+  console.error(`Missing required environment variables: ${missingEnv.join(", ")}. Copy server/.env.example to server/.env and configure them.`);
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.error("JWT_SECRET must contain at least 32 characters.");
   process.exit(1);
 }
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const uploadsDir = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve(here, "../uploads");
-
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Robust CORS configuration:
-// Handles trailing slashes, multiple domains, and echoes exact request Origin
+const uploadsDir = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.resolve(here, "../uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
 const clientOriginEnv = process.env.CLIENT_ORIGIN?.trim();
-const allowedOrigins = clientOriginEnv && clientOriginEnv !== "*"
-  ? clientOriginEnv.split(",").map((o) => o.trim().replace(/\/+$/, ""))
-  : null;
+const allowedOrigins = clientOriginEnv
+  ? clientOriginEnv.split(",").map((origin) => origin.trim().replace(/\/+$/, ""))
+  : ["http://localhost:5173"];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow non-browser requests (e.g. curl, server-to-server)
-      if (!origin) return callback(null, true);
-      // If wildcard or no restricted origin configured, allow all
-      if (!allowedOrigins) return callback(null, true);
+app.disable("x-powered-by");
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ""))) return callback(null, true);
+    const error = new Error(`CORS origin not allowed: ${origin}`);
+    error.status = 403;
+    error.code = "CORS_ORIGIN_DENIED";
+    return callback(error);
+  },
+  credentials: true
+}));
 
-      const cleanOrigin = origin.replace(/\/+$/, "");
-      if (allowedOrigins.some((o) => o === cleanOrigin)) {
-        return callback(null, true);
-      }
-      // Allow local development ports
-      if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`CORS origin not allowed: ${origin}`));
-    },
-    credentials: true
-  })
-);
-
-app.use(express.json({ limit: "100kb" }));
-app.use("/uploads", express.static(uploadsDir));
-
-// Health check endpoint
-app.get("/api/health", (_req, res) =>
-  res.json({
-    status: "ok",
-    app: "Unfold",
-    persistence: process.env.DATA_DIR ? "persistent-disk" : "local-json",
-    uptime: Math.floor(process.uptime())
-  })
-);
-
-// REST API routes
-app.use("/api", routes);
-
-// 404 handler for undefined API routes
-app.use("/api/*", (_req, res) => {
-  res.status(404).json({ error: { code: "NOT_FOUND", message: "API endpoint not found." } });
+// Cookie-based sessions are protected with SameSite cookies and an Origin check
+// for state-changing browser requests. Requests from non-browser clients that do not send an Origin header remain supported.
+app.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  const origin = req.get("origin");
+  if (!origin) return next();
+  const normalizedOrigin = origin.replace(/\/+$/, "");
+  if (!allowedOrigins.includes(normalizedOrigin)) {
+    return res.status(403).json({
+      success: false,
+      error: { code: "CSRF_ORIGIN_DENIED", message: "This request origin is not allowed." }
+    });
+  }
+  return next();
 });
 
-// Serve frontend static build if present (e.g. unified deployment)
-const clientDist = path.resolve(here, "../../client/dist");
-if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
-      return next();
-    }
-    res.sendFile(path.join(clientDist, "index.html"));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use("/uploads", express.static(uploadsDir, { maxAge: "1h", immutable: false }));
+app.use(morgan("combined", {
+  stream: { write: (message) => logger.info(message.trim(), { source: "http" }) }
+}));
+
+// Versioned API is the canonical integration base. /api remains a temporary
+// compatibility alias for deployed previews that use the original frontend.
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1", moderationRoutes);
+app.use("/api/v1", postsRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/v1", legacyRoutes);
+app.use("/api", legacyRoutes);
+
+app.get(["/api/v1/health", "/api/health"], (_req, res) => {
+  res.json({
+    success: true,
+    app: "Unfold",
+    version: "2.2.0-posts-foundation",
+    status: isMongoReady() ? "ok" : "degraded",
+    services: {
+      mongodb: isMongoReady() ? "connected" : "disconnected",
+      postgresql: postgresPool ? "connected" : "not-configured",
+      redis: redisClient?.isReady ? "connected" : "not-configured",
+      cloudinary: isCloudinaryConfigured() ? "configured" : "not-configured"
+    },
+    uptimeSeconds: Math.floor(process.uptime())
   });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "API endpoint not found." } });
+});
+
+app.use((error, _req, res, _next) => {
+  if (error?.code === 11000) {
+    return res.status(409).json({ success: false, error: { code: "DUPLICATE_VALUE", message: "That value is already in use." } });
+  }
+  if (error?.name === "ValidationError") {
+    return res.status(400).json({ success: false, error: { code: "VALIDATION_ERROR", message: "Please check the submitted information." } });
+  }
+  if (error?.name === "MulterError") {
+    return res.status(400).json({ success: false, error: { code: "UPLOAD_ERROR", message: error.message } });
+  }
+  const status = Number(error?.status) || 500;
+  const code = error?.code || "INTERNAL_ERROR";
+  if (status >= 500) logger.error("Unhandled request error", { message: error?.message, stack: error?.stack });
+  return res.status(status).json({
+    success: false,
+    error: { code, message: status >= 500 ? "Unexpected server error." : error.message }
+  });
+});
+
+async function shutdown(signal) {
+  logger.info("Shutting down Unfold API", { signal });
+  await Promise.allSettled([closeRedis(), closePostgres(), disconnectMongo()]);
+  process.exit(0);
 }
 
-// Global error handler
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } });
-});
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-app.listen(port, () => console.log(`Unfold API listening at http://localhost:${port}`));
+async function start() {
+  try {
+    await connectMongo();
+    await seedDefaultCommunities();
+    await initialisePostgres();
+    await connectRedis();
+    configureCloudinary();
+
+    app.listen(port, () => logger.info(`Unfold API listening at http://localhost:${port}`));
+  } catch (error) {
+    logger.error("Unfold API startup failed", { message: error.message, stack: error.stack });
+    process.exit(1);
+  }
+}
+
+start();

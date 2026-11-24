@@ -1,20 +1,5 @@
 {
-  "users": [
-    {
-      "id": "18482840-6a8d-4a69-a972-9d94c78e8237",
-      "username": "kaushik_m41",
-      "email": "maitrik@gmail.com",
-      "passwordHash": "$2a$10$cvuSLKN4kLvQ3JBamxx8EunwyPG0wB4LPPObtSlPo5RfJuwdGCrpW",
-      "createdAt": "2026-10-26T14:30:11.492Z"
-    },
-    {
-      "id": "814f4a54-0ab5-49c3-aa5d-c35e195d41ec",
-      "username": "MilanSingla",
-      "email": "milansingla15@gmail.com",
-      "passwordHash": "$2a$10$yut0eApMdtOrC654wW2JjuQHDNfLZAo3yom.C5FP9dRi8Qy1XBzIm",
-      "createdAt": "2026-10-26T17:02:58.737Z"
-    }
-  ],
+  "users": [],
   "communities": [
     {
       "id": "technology",
