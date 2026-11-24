@@ -28,7 +28,7 @@ const messageSendLimiter = rateLimit({
   }
 });
 
-router.use(requireAuth);
+router.use(["/conversations", "/messages"], requireAuth);
 
 router.get("/conversations", asyncRoute(async (req, res) => {
   const conversations = await listConversations(req.user.id);

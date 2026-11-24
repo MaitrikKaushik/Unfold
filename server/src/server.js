@@ -38,15 +38,29 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.resolve(here, "../uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
 const clientOriginEnv = process.env.CLIENT_ORIGIN?.trim();
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://localhost:4000",
+  "https://unfold-two-sigma.vercel.app"
+];
 const allowedOrigins = clientOriginEnv
-  ? clientOriginEnv.split(",").map((origin) => origin.trim().replace(/\/+$/, ""))
-  : ["http://localhost:5173"];
+  ? [...new Set([...clientOriginEnv.split(",").map((o) => o.trim().replace(/\/+$/, "")), ...defaultOrigins])]
+  : defaultOrigins;
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  const clean = origin.replace(/\/+$/, "");
+  if (allowedOrigins.includes(clean)) return true;
+  // Allow Vercel preview and production deployments under vercel.app
+  if (/^https:\/\/unfold(-[a-z0-9_-]+)?\.vercel\.app$/i.test(clean)) return true;
+  return false;
+}
 
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ""))) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
     const error = new Error(`CORS origin not allowed: ${origin}`);
     error.status = 403;
     error.code = "CORS_ORIGIN_DENIED";
@@ -62,7 +76,7 @@ app.use((req, res, next) => {
   const origin = req.get("origin");
   if (!origin) return next();
   const normalizedOrigin = origin.replace(/\/+$/, "");
-  if (!allowedOrigins.includes(normalizedOrigin)) {
+  if (!isOriginAllowed(normalizedOrigin)) {
     return res.status(403).json({
       success: false,
       error: { code: "CSRF_ORIGIN_DENIED", message: "This request origin is not allowed." }
@@ -78,17 +92,8 @@ app.use(morgan("combined", {
   stream: { write: (message) => logger.info(message.trim(), { source: "http" }) }
 }));
 
-// Versioned API is the canonical integration base. /api remains a temporary
-// compatibility alias for deployed previews that use the original frontend.
-app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1", moderationRoutes);
-app.use("/api/v1", postsRoutes);
-app.use("/api/v1", messagesRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/v1", legacyRoutes);
-app.use("/api", legacyRoutes);
-
-app.get(["/api/v1/health", "/api/health"], (_req, res) => {
+// Health check endpoint (placed before route routers so it is never intercepted by auth middleware)
+app.get(["/api/v1/health", "/api/health", "/health"], (_req, res) => {
   res.json({
     success: true,
     app: "Unfold",
@@ -103,6 +108,16 @@ app.get(["/api/v1/health", "/api/health"], (_req, res) => {
     uptimeSeconds: Math.floor(process.uptime())
   });
 });
+
+// Versioned API is the canonical integration base. /api remains a temporary
+// compatibility alias for deployed previews that use the original frontend.
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1", moderationRoutes);
+app.use("/api/v1", postsRoutes);
+app.use("/api/v1", messagesRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/v1", legacyRoutes);
+app.use("/api", legacyRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "API endpoint not found." } });
@@ -147,7 +162,7 @@ async function start() {
     const httpServer = http.createServer(app);
     setupSocketIO(httpServer, allowedOrigins);
 
-    httpServer.listen(port, () => logger.info(`Unfold API listening at http://localhost:${port}`));
+    httpServer.listen(port, "0.0.0.0", () => logger.info(`Unfold API listening at http://0.0.0.0:${port}`));
   } catch (error) {
     logger.error("Unfold API startup failed", { message: error.message, stack: error.stack });
     process.exit(1);

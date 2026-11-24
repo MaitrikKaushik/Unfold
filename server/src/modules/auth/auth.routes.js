@@ -80,7 +80,8 @@ router.post("/register", authLimiter, asyncRoute(async (req, res) => {
   return res.status(201).json({
     success: true,
     message: "Your Unfold account has been created.",
-    data: { user: publicUser(user) },
+    token,
+    data: { user: publicUser(user), token },
     user: publicUser(user)
   });
 }));
@@ -90,7 +91,13 @@ router.post("/login", authLimiter, asyncRoute(async (req, res) => {
   const token = createAccessToken(user);
   setSessionCookie(res, token);
   logger.info("User logged in", { userId: String(user._id) });
-  return res.json({ success: true, message: "Welcome back to Unfold.", data: { user: publicUser(user) }, user: publicUser(user) });
+  return res.json({
+    success: true,
+    message: "Welcome back to Unfold.",
+    token,
+    data: { user: publicUser(user), token },
+    user: publicUser(user)
+  });
 }));
 
 router.post("/logout", requireAuth, asyncRoute(async (req, res) => {

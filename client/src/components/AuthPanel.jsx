@@ -42,7 +42,7 @@ export default function AuthPanel({ onAuth }) {
       const user = result.user || result.data?.user;
       if (!user) throw new Error("The server did not return an account profile.");
 
-      setSession(undefined, user);
+      setSession(result.token || result.data?.token, user);
       if (mode === "register") {
         setCreatedAccount(user);
       } else {

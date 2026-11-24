@@ -1,29 +1,50 @@
-const configuredApiUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "");
-const API = configuredApiUrl
-  ? configuredApiUrl.endsWith("/api/v1")
-    ? configuredApiUrl
-    : `${configuredApiUrl.replace(/\/api$/, "")}/api/v1`
-  : import.meta.env.PROD
-    ? "/api/v1"
-    : "http://localhost:4000/api/v1";
+function normalizeApiUrl(rawUrl) {
+  if (!rawUrl) {
+    return import.meta.env.PROD ? "/api/v1" : "http://localhost:4000/api/v1";
+  }
+  const clean = rawUrl.trim().replace(/\/+$/, "");
+  if (clean.endsWith("/api/v1")) return clean;
+  if (clean.endsWith("/api")) return `${clean.slice(0, -4)}/api/v1`;
+  return `${clean}/api/v1`;
+}
 
-export const SERVER_ORIGIN = API.replace(/\/api\/v1\/?$/, "");
+const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
+const API = normalizeApiUrl(configuredApiUrl);
 
-// The JWT is held in an HttpOnly cookie, never in localStorage.
-// Local storage contains only a non-sensitive display cache for the app shell.
+export const SERVER_ORIGIN = API.startsWith("http")
+  ? API.replace(/\/api\/v1\/?$/, "")
+  : "";
+
+export function getToken() {
+  try {
+    return localStorage.getItem("unfold_token") || null;
+  } catch {
+    return null;
+  }
+}
+
 export function hasCachedUser() {
   return Boolean(getUser());
 }
 
-// Compatibility alias for any older component still using the old helper name.
-export const getToken = hasCachedUser;
-
-export function setSession(_token, user) {
-  if (user) localStorage.setItem("unfold_user", JSON.stringify(user));
+export function setSession(token, user) {
+  if (token) {
+    try {
+      localStorage.setItem("unfold_token", token);
+    } catch {}
+  }
+  if (user) {
+    try {
+      localStorage.setItem("unfold_user", JSON.stringify(user));
+    } catch {}
+  }
 }
 
 export function clearSession() {
-  localStorage.removeItem("unfold_user");
+  try {
+    localStorage.removeItem("unfold_token");
+    localStorage.removeItem("unfold_user");
+  } catch {}
 }
 
 export function getUser() {
@@ -46,6 +67,11 @@ export async function api(path, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
   let body = options.body;
+
+  const token = getToken();
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   if (body && !isForm && typeof body !== "string") {
     headers["Content-Type"] = "application/json";
@@ -79,7 +105,12 @@ export async function api(path, options = {}) {
         }));
       }
     }
-    const error = new Error(data?.error?.message || "Request failed. Please try again.");
+    const message = data?.error?.message
+      || data?.message
+      || (response.status === 405
+        ? "API routing error (405 Method Not Allowed). The request hit the frontend instead of the API server."
+        : "Request failed. Please try again.");
+    const error = new Error(message);
     error.code = code;
     error.status = response.status;
     error.details = data?.error?.details;
