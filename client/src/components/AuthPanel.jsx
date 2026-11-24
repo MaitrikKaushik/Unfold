@@ -183,7 +183,7 @@ export default function AuthPanel({ onAuth }) {
                 className="form-control"
                 autoComplete="username"
                 required
-                placeholder="Your Unfold username"
+                placeholder="Enter username or email address"
                 value={form.username}
                 onChange={(event) => setForm({ ...form, username: event.target.value })}
               />

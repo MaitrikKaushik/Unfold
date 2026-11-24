@@ -17,6 +17,13 @@ const userSchema = new mongoose.Schema({
     maxlength: 32,
     match: /^[a-z0-9_]{3,32}$/
   },
+  email: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    sparse: true,
+    unique: true
+  },
   passwordHash: { type: String, required: true, select: false },
   displayName: { type: String, trim: true, maxlength: 40, default: "" },
   bio: { type: String, trim: true, maxlength: 250, default: "" },
@@ -29,7 +36,20 @@ const userSchema = new mongoose.Schema({
     followers: { type: Number, default: 0, min: 0 },
     following: { type: Number, default: 0, min: 0 },
     publishedPosts: { type: Number, default: 0, min: 0 }
-  }
+  },
+  preferences: {
+    theme: { type: String, enum: ["light", "dark"], default: "light" },
+    privacy: {
+      directMessages: { type: String, enum: ["everyone", "none"], default: "everyone" },
+      profileVisibility: { type: String, enum: ["public", "members"], default: "public" }
+    },
+    notifications: {
+      directMessages: { type: Boolean, default: true },
+      communityActivity: { type: Boolean, default: true },
+      accountUpdates: { type: Boolean, default: true }
+    }
+  },
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
 }, { timestamps: true, versionKey: false });
 
 userSchema.index({ displayName: "text", username: "text" });

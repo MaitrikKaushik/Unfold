@@ -3,6 +3,7 @@ import multer from "multer";
 import mongoose from "mongoose";
 import path from "node:path";
 import Community from "../../models/Community.js";
+import Membership from "../../models/Membership.js";
 import MediaAsset from "../../models/MediaAsset.js";
 import Post from "../../models/Post.js";
 import { requireAuth, optionalAuth } from "../../middleware/auth.js";
@@ -178,11 +179,32 @@ async function createPostWithFiles({ req, communityId }) {
 }
 
 // General appears alongside public communities as a virtual destination.
-router.get("/communities", asyncRoute(async (_req, res) => {
+router.get("/communities", optionalAuth, asyncRoute(async (req, res) => {
   const communities = await Community.find({ visibility: "public" })
     .sort({ isSystem: -1, memberCount: -1, name: 1 })
     .lean();
-  res.json({ communities: [GENERAL_COMMUNITY, ...communities.map(serializeCommunity)] });
+
+  let userMemberships = new Set();
+  if (req.user?._id) {
+    const memberships = await Membership.find({ userId: req.user._id, status: "active" })
+      .select("communityId")
+      .lean();
+    userMemberships = new Set(memberships.map((m) => String(m.communityId)));
+  }
+
+  const serialized = communities.map((c) => {
+    const item = serializeCommunity(c);
+    item.isMember = userMemberships.has(String(c._id));
+    return item;
+  });
+
+  const general = {
+    ...GENERAL_COMMUNITY,
+    isMember: true,
+    memberCount: communities.reduce((acc, c) => acc + (c.memberCount || 0), 0) + 12
+  };
+
+  res.json({ communities: [general, ...serialized] });
 }));
 
 router.post("/communities/:communityId/join", requireAuth, asyncRoute(async (req, res) => {

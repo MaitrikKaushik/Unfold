@@ -1,4 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
+import {
+  ChevronUp,
+  ChevronDown,
+  MessageCircle,
+  MessageSquare,
+  HelpCircle,
+  Link as LinkIcon,
+  MoreVertical,
+  Edit3,
+  Trash2,
+  ExternalLink,
+  X,
+  Send
+} from "lucide-react";
 import { api, getAssetUrl } from "../services/api";
 
 const CATEGORIES = ["Discussion", "Question", "Resource"];
@@ -191,20 +205,20 @@ export default function PostCard({
     <article className="post-card">
       {/* Top Header of the Post Card */}
       <div className="post-top">
-        <div className="avatar">{(post.author?.username || "?").slice(0, 1).toUpperCase()}</div>
+        <div className="avatar">{(post.author?.displayName || post.author?.username || "?").slice(0, 1).toUpperCase()}</div>
         <div className="post-author">
           <strong>{post.author?.displayName || post.author?.username || "anonymous"}</strong>
-          {post.author?.displayName && <em className="post-handle">@{post.author?.username}</em>}
+          {post.author?.displayName && <span className="post-handle">@{post.author?.username}</span>}
           <span>
             {date}
-            {post.updatedAt && <em className="ms-1 small muted">(edited)</em>}
+            {post.updatedAt && <span className="ms-1 small muted"> (edited)</span>}
           </span>
         </div>
 
         <div className="post-badges">
           <span className={`category-badge badge-${categoryClass}`}>{category}</span>
           <span className="community-pill">{post.communityId}</span>
-          {isPending && <span className="pending-status-pill">Pending · private</span>}
+          {isPending && <span className="pending-status-pill">Pending</span>}
         </div>
 
         {/* Three-Dot Menu (Owner only) */}
@@ -214,10 +228,10 @@ export default function PostCard({
               type="button"
               className="post-menu-trigger"
               onClick={() => setMenuOpen(!menuOpen)}
-              aria-label="Post options"
+              aria-label="Post actions"
               title="Post actions"
             >
-              ⋮
+              <MoreVertical size={18} strokeWidth={2.2} />
             </button>
             {menuOpen && (
               <div className="post-dropdown-menu">
@@ -227,7 +241,8 @@ export default function PostCard({
                     className="post-dropdown-item"
                     onClick={startEditing}
                   >
-                    <span className="dropdown-icon">✏️</span> Edit post
+                    <Edit3 size={15} strokeWidth={2.2} />
+                    <span>Edit post</span>
                   </button>
                 )}
                 <button
@@ -238,7 +253,8 @@ export default function PostCard({
                     setShowDeleteConfirm(true);
                   }}
                 >
-                  <span className="dropdown-icon">🗑️</span> Delete post
+                  <Trash2 size={15} strokeWidth={2.2} />
+                  <span>Delete post</span>
                 </button>
               </div>
             )}
@@ -246,11 +262,11 @@ export default function PostCard({
         )}
       </div>
 
-      {/* Delete Confirmation Modal / Dialog */}
+      {/* Delete Confirmation Box */}
       {showDeleteConfirm && (
-        <div className="delete-confirm-box my-3 p-3 border border-danger-subtle rounded bg-danger-subtle bg-opacity-25">
+        <div className="delete-confirm-box my-3 p-3 border border-danger-subtle rounded">
           <strong className="d-block mb-1 text-danger">Delete this post?</strong>
-          <p className="mb-3 small text-muted">
+          <p className="mb-3 small muted">
             Are you sure you want to delete this post? This action will remove the post and its comments permanently.
           </p>
           <div className="d-flex gap-2">
@@ -276,7 +292,7 @@ export default function PostCard({
 
       {/* Inline Post Edit Form */}
       {isEditing ? (
-        <form onSubmit={handleSaveEdit} className="post-edit-form my-3 p-3 border rounded bg-subtle">
+        <form onSubmit={handleSaveEdit} className="post-edit-form my-3 p-3 border rounded">
           <div className="d-flex justify-content-between align-items-center mb-2">
             <strong className="small">Edit Post</strong>
             <button
@@ -285,7 +301,7 @@ export default function PostCard({
               onClick={cancelEditing}
               aria-label="Cancel editing"
             >
-              ×
+              <X size={16} strokeWidth={2.2} />
             </button>
           </div>
 
@@ -302,10 +318,10 @@ export default function PostCard({
                   className={`cat-pill-btn ${editCategory === cat ? "selected" : ""}`}
                   onClick={() => setEditCategory(cat)}
                 >
-                  {cat === "Discussion" && "💬 "}
-                  {cat === "Question" && "❓ "}
-                  {cat === "Resource" && "🔗 "}
-                  {cat}
+                  {cat === "Discussion" && <MessageSquare size={13} strokeWidth={2.2} />}
+                  {cat === "Question" && <HelpCircle size={13} strokeWidth={2.2} />}
+                  {cat === "Resource" && <LinkIcon size={13} strokeWidth={2.2} />}
+                  <span>{cat}</span>
                 </button>
               ))}
             </div>
@@ -356,15 +372,16 @@ export default function PostCard({
                 <img
                   src={getAssetUrl(post.imageUrl)}
                   alt="Current attachment"
-                  style={{ width: "45px", height: "45px", objectFit: "cover", borderRadius: "6px" }}
+                  style={{ width: "45px", height: "45px", objectFit: "cover", borderRadius: "8px" }}
                 />
                 <span className="small muted flex-grow-1">Current attachment</span>
                 <button
                   type="button"
-                  className="btn btn-outline-danger btn-sm py-0 px-2"
+                  className="btn btn-outline-danger btn-sm py-0 px-2 d-flex align-items-center gap-1"
                   onClick={() => setRemoveCurrentImage(true)}
                 >
-                  ✕ Remove image
+                  <X size={12} strokeWidth={2.2} />
+                  <span>Remove</span>
                 </button>
               </div>
             )}
@@ -383,7 +400,8 @@ export default function PostCard({
             )}
 
             <label className="upload-label small">
-              ＋ {post.imageUrl && !removeCurrentImage ? "Replace image" : "Add image"}
+              <span className="upload-label-icon">+</span>
+              <span>{post.imageUrl && !removeCurrentImage ? "Replace image" : "Add image"}</span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
@@ -400,7 +418,7 @@ export default function PostCard({
           <div className="d-flex gap-2">
             <button
               type="submit"
-              className="btn btn-dark btn-sm"
+              className="btn btn-primary btn-sm"
               disabled={isSavingEdit || (!editText.trim() && !editTitle.trim() && !editImage && (!post.imageUrl || removeCurrentImage))}
             >
               {isSavingEdit ? "Saving…" : "Save Changes"}
@@ -430,9 +448,8 @@ export default function PostCard({
                 className="post-resource-link"
                 title={post.link}
               >
-                <span className="link-icon">🔗</span>
+                <ExternalLink size={14} strokeWidth={2.2} />
                 <span className="link-url">{post.link}</span>
-                <span className="link-arrow">↗</span>
               </a>
             </div>
           )}
@@ -455,6 +472,7 @@ export default function PostCard({
               loading="lazy"
             />
           ) : null}
+
           {(post.media || []).filter((item) => item.mediaType === "audio").map((item) => (
             <div className="post-audio-player" key={item.assetId || item.publicId}>
               <span className="post-audio-label">Audio attachment</span>
@@ -464,11 +482,11 @@ export default function PostCard({
         </>
       )}
 
-      {/* Pending posts stay private and cannot receive votes or comments. */}
+      {/* Pending post notice */}
       {isPending ? (
         <div className="pending-post-notice">
           <strong>Your post is saved privately.</strong>
-          <span>It will be published automatically when your latest published post anywhere on Unfold receives 2 upvotes.</span>
+          <span>It will be published automatically when your latest published post receives 2 upvotes.</span>
         </div>
       ) : (
         <div className="post-actions">
@@ -479,7 +497,7 @@ export default function PostCard({
               aria-label="Upvote"
               title="Upvote post"
             >
-              ↑
+              <ChevronUp size={18} strokeWidth={2.5} />
             </button>
             <span className={`score ${post.score < 0 ? "negative" : ""}`}>{post.score}</span>
             <button
@@ -488,7 +506,7 @@ export default function PostCard({
               aria-label="Downvote"
               title="Downvote post"
             >
-              ↓
+              <ChevronDown size={18} strokeWidth={2.5} />
             </button>
           </div>
 
@@ -497,11 +515,13 @@ export default function PostCard({
             onClick={toggleComments}
             aria-label="Toggle comments"
           >
-            <span className="comment-icon">💬</span>
-            <span>{commentCount} {commentCount === 1 ? "comment" : "comments"}</span>
+            <MessageCircle size={15} strokeWidth={2.2} />
+            <span>
+              {commentCount} {commentCount === 1 ? "comment" : "comments"}
+            </span>
           </button>
 
-          <span className="vote-detail ms-auto">
+          <span className="vote-detail">
             {post.upvoteCount} up · {post.downvoteCount} down
           </span>
         </div>
@@ -516,13 +536,14 @@ export default function PostCard({
 
           {commentError && (
             <div className="alert alert-danger py-2 mb-3">
-              {commentError}
+              <span>{commentError}</span>
               <button
                 type="button"
                 className="alert-close"
                 onClick={() => setCommentError("")}
+                aria-label="Close error"
               >
-                ×
+                <X size={16} strokeWidth={2.2} />
               </button>
             </div>
           )}
@@ -541,10 +562,11 @@ export default function PostCard({
                 />
                 <button
                   type="submit"
-                  className="btn btn-dark btn-sm comment-submit-btn"
+                  className="btn btn-primary btn-sm comment-submit-btn"
                   disabled={submittingComment || !commentText.trim()}
                 >
-                  {submittingComment ? "Posting…" : "Comment"}
+                  <Send size={14} strokeWidth={2.2} />
+                  <span>{submittingComment ? "Posting…" : "Comment"}</span>
                 </button>
               </div>
             </form>
@@ -568,12 +590,12 @@ export default function PostCard({
                 return (
                   <div key={comment.id} className="comment-item">
                     <div className="comment-avatar">
-                      {(comment.author?.username || "?").slice(0, 1).toUpperCase()}
+                      {(comment.author?.displayName || comment.author?.username || "?").slice(0, 1).toUpperCase()}
                     </div>
                     <div className="comment-content">
                       <div className="comment-meta">
                         <strong className="comment-author-name">
-                          {comment.author?.username || "unknown"}
+                          {comment.author?.displayName || comment.author?.username || "unknown"}
                         </strong>
                         <span className="comment-date">{commentDate}</span>
                         {isCommentAuthor && (

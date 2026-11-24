@@ -1,4 +1,5 @@
 import "dotenv/config";
+import http from "node:http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -10,6 +11,8 @@ import legacyRoutes from "./routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import moderationRoutes from "./modules/moderation/moderation.routes.js";
 import postsRoutes from "./modules/posts/posts.routes.js";
+import messagesRoutes from "./modules/messages/messages.routes.js";
+import { setupSocketIO } from "./modules/messages/messages.socket.js";
 import { connectMongo, isMongoReady } from "./config/mongo.js";
 import { initialisePostgres, postgresPool, closePostgres } from "./config/postgres.js";
 import { connectRedis, redisClient, closeRedis } from "./config/redis.js";
@@ -80,6 +83,7 @@ app.use(morgan("combined", {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1", moderationRoutes);
 app.use("/api/v1", postsRoutes);
+app.use("/api/v1", messagesRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/v1", legacyRoutes);
 app.use("/api", legacyRoutes);
@@ -140,7 +144,10 @@ async function start() {
     await connectRedis();
     configureCloudinary();
 
-    app.listen(port, () => logger.info(`Unfold API listening at http://localhost:${port}`));
+    const httpServer = http.createServer(app);
+    setupSocketIO(httpServer, allowedOrigins);
+
+    httpServer.listen(port, () => logger.info(`Unfold API listening at http://localhost:${port}`));
   } catch (error) {
     logger.error("Unfold API startup failed", { message: error.message, stack: error.stack });
     process.exit(1);
