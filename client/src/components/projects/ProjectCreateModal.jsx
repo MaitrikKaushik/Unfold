@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Plus, Trash2, Calendar, Users, Eye, Sparkles, Image, CheckCircle2 } from "lucide-react";
 import { api } from "../../services/api";
 
@@ -30,6 +30,23 @@ export default function ProjectCreateModal({ isOpen, onClose, onProjectCreated, 
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -132,7 +149,7 @@ export default function ProjectCreateModal({ isOpen, onClose, onProjectCreated, 
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="project-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="project-modal-card create-project-modal" onClick={(e) => e.stopPropagation()}>
         <div className="project-modal-header">
           <div>
             <span className="eyebrow">NEW COMMUNITY PROJECT</span>
@@ -143,10 +160,11 @@ export default function ProjectCreateModal({ isOpen, onClose, onProjectCreated, 
           </button>
         </div>
 
-        {error && <div className="alert alert-danger mb-3">{error}</div>}
+        {error && <div className="alert alert-danger mx-4 mt-3 mb-0">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="project-form">
-          {/* Title */}
+        <form onSubmit={handleSubmit} className="project-modal-form-layout">
+          <div className="project-modal-scrollable-body">
+            {/* Title */}
           <div className="form-group mb-3">
             <label className="form-label">
               Project Title <span className="text-danger">*</span>
@@ -358,26 +376,34 @@ export default function ProjectCreateModal({ isOpen, onClose, onProjectCreated, 
               </div>
             )}
           </div>
+        </div>
 
-          <div className="modal-actions-footer">
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              onClick={onClose}
-              disabled={loading}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading || !title.trim() || !shortDescription.trim()}
-            >
-              {loading ? "Creating Project..." : "Create Project"}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="modal-actions-footer">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={onClose}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn btn-primary d-inline-flex align-items-center gap-2"
+            disabled={loading || !title.trim() || !shortDescription.trim()}
+          >
+            {loading ? (
+              <>
+                <div className="loading-spinner loading-spinner-sm"></div>
+                <span>Creating Project...</span>
+              </>
+            ) : (
+              <span>Create Project</span>
+            )}
+          </button>
+        </div>
+      </form>
     </div>
-  );
+  </div>
+);
 }

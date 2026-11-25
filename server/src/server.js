@@ -41,7 +41,11 @@ fs.mkdirSync(uploadsDir, { recursive: true });
 const clientOriginEnv = process.env.CLIENT_ORIGIN?.trim();
 const defaultOrigins = [
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
   "http://localhost:4000",
+  "http://127.0.0.1:4000",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
   "https://unfold-two-sigma.vercel.app"
 ];
 const allowedOrigins = clientOriginEnv
@@ -57,9 +61,7 @@ function isOriginAllowed(origin) {
   return false;
 }
 
-app.disable("x-powered-by");
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({
+const corsOptions = {
   origin(origin, callback) {
     if (isOriginAllowed(origin)) return callback(null, true);
     const error = new Error(`CORS origin not allowed: ${origin}`);
@@ -67,8 +69,15 @@ app.use(cors({
     error.code = "CORS_ORIGIN_DENIED";
     return callback(error);
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+};
+
+app.disable("x-powered-by");
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // Cookie-based sessions are protected with SameSite cookies and an Origin check
 // for state-changing browser requests. Requests from non-browser clients that do not send an Origin header remain supported.

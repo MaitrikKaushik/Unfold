@@ -11,8 +11,8 @@ export async function connectMongo() {
       serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 4000)
     });
   } catch (primaryErr) {
-    logger.warn("Primary MongoDB connection failed, falling back to local MongoDB...", { error: primaryErr.message });
-    const fallbackUri = process.env.LOCAL_MONGODB_URI || "mongodb://127.0.0.1:27018/unfold";
+    logger.warn("Primary MongoDB connection failed (check Atlas IP whitelist). Falling back to local MongoDB...", { error: primaryErr.message });
+    const fallbackUri = process.env.LOCAL_MONGODB_URI || "mongodb://127.0.0.1:27017/unfold";
     await mongoose.connect(fallbackUri, {
       serverSelectionTimeoutMS: 4000
     });

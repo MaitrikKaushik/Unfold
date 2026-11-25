@@ -18,7 +18,7 @@ import {
   FolderKanban
 } from "lucide-react";
 import { io } from "socket.io-client";
-import { api, getAssetUrl, getToken } from "../../services/api";
+import { api, getAssetUrl, getToken, SERVER_ORIGIN } from "../../services/api";
 import ProjectKanban from "./ProjectKanban";
 import ProjectDiscussions from "./ProjectDiscussions";
 import ProjectMembers from "./ProjectMembers";
@@ -69,13 +69,8 @@ export default function ProjectWorkspace({
   useEffect(() => {
     if (!projectId) return;
 
-    const rawUrl = import.meta.env.VITE_API_URL || "http://localhost:4000/api/v1";
-    const socketOrigin = rawUrl.startsWith("http")
-      ? rawUrl.replace(/\/api\/v1\/?$/, "")
-      : "";
-
     const token = getToken();
-    const socket = io(socketOrigin || undefined, {
+    const socket = io(SERVER_ORIGIN || undefined, {
       auth: { token },
       transports: ["websocket", "polling"]
     });

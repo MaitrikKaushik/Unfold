@@ -135,3 +135,12 @@ export function broadcastNewMessage(recipientId, conversationId, message) {
     });
   }
 }
+
+export function broadcastMessagesRead(conversationId, readerId) {
+  if (!ioInstance) return;
+  ioInstance.to(`conversation:${conversationId}`).emit("messages_read", {
+    conversationId,
+    readerId,
+    readAt: new Date().toISOString()
+  });
+}

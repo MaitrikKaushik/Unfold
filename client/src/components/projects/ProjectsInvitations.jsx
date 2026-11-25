@@ -52,6 +52,25 @@ export default function ProjectsInvitations({ onSelectProject, onRefreshOverview
     }
   }
 
+  async function handleWithdraw(invitationId) {
+    if (!window.confirm("Are you sure you want to withdraw this join application?")) return;
+    setProcessingId(invitationId);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/projects/join-requests/${invitationId}/withdraw`, {
+        method: "POST"
+      });
+      setNotice("Application withdrawn successfully.");
+      await loadInvitations();
+      if (onRefreshOverview) onRefreshOverview();
+    } catch (err) {
+      setError(err.message || "Failed to withdraw application.");
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
   return (
     <div className="projects-invitations-pane">
       <div className="pane-header-row mb-3">
@@ -182,10 +201,21 @@ export default function ProjectsInvitations({ onSelectProject, onRefreshOverview
 
               <div className="invitation-status-badge">
                 {req.status === "pending" && (
-                  <span className="badge bg-warning text-dark d-flex align-items-center gap-1">
-                    <Clock size={12} />
-                    Pending Review
-                  </span>
+                  <div className="d-flex align-items-center gap-2">
+                    <span className="badge bg-warning text-dark d-flex align-items-center gap-1">
+                      <Clock size={12} />
+                      Pending Review
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger btn-xs"
+                      onClick={() => handleWithdraw(req._id)}
+                      disabled={processingId === req._id}
+                      title="Withdraw application"
+                    >
+                      Withdraw
+                    </button>
+                  </div>
                 )}
                 {req.status === "accepted" && (
                   <span className="badge bg-success d-flex align-items-center gap-1">
@@ -197,6 +227,11 @@ export default function ProjectsInvitations({ onSelectProject, onRefreshOverview
                   <span className="badge bg-secondary d-flex align-items-center gap-1">
                     <XCircle size={12} />
                     Declined
+                  </span>
+                )}
+                {req.status === "canceled" && (
+                  <span className="badge bg-light text-muted d-flex align-items-center gap-1">
+                    Withdrawn
                   </span>
                 )}
               </div>

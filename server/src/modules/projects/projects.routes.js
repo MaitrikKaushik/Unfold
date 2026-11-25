@@ -309,6 +309,16 @@ router.post("/projects/:id/join-request/:invitationId/respond", requireAuth, req
   }
 });
 
+// Withdraw join request (Applicant)
+router.post("/projects/join-requests/:invitationId/withdraw", requireAuth, async (req, res) => {
+  try {
+    const result = await projectService.withdrawJoinRequest(req.params.invitationId, req.user._id);
+    return sendSuccess(res, result);
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // Update member role (Owner only)
 router.patch("/projects/:id/members/:userId/role", requireAuth, requireProjectAccess, requireProjectRole("owner"), async (req, res) => {
   try {

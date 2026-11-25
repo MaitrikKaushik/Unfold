@@ -23,8 +23,22 @@ export default function NotificationsModal({ isOpen, onClose, onNavigateToProjec
   useEffect(() => {
     if (isOpen) {
       loadNotifications();
+
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      function handleKeyDown(e) {
+        if (e.key === "Escape") {
+          onClose();
+        }
+      }
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = prevOverflow;
+        window.removeEventListener("keydown", handleKeyDown);
+      };
     }
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   async function handleMarkRead(notifId) {
     try {
@@ -56,7 +70,7 @@ export default function NotificationsModal({ isOpen, onClose, onNavigateToProjec
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="notifications-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div className="notifications-flyout-card" onClick={(e) => e.stopPropagation()}>
         <div className="notifications-header">
           <div className="d-flex align-items-center gap-2">

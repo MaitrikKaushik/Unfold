@@ -17,6 +17,9 @@ import { getAssetUrl } from "../../services/api";
 export default function ProjectsOverview({
   myProjects = [],
   invitations = [],
+  loading = false,
+  error = "",
+  onRetry,
   onNavigate,
   onOpenCreate,
   onSelectProject
@@ -28,6 +31,53 @@ export default function ProjectsOverview({
   const completedTasks = myProjects.reduce((acc, p) => acc + (p.stats?.completedTaskCount || 0), 0);
   const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const pendingInvitesCount = invitations.length;
+
+  if (loading) {
+    return (
+      <div className="projects-overview-pane">
+        <section className="projects-hero-banner placeholder-glow">
+          <div className="hero-content">
+            <span className="eyebrow-accent">COMMUNITY PROJECTS</span>
+            <h1 className="hero-title">Loading project workspaces...</h1>
+            <p className="hero-subtitle">Gathering your initiatives, tasks, and collaboration updates.</p>
+          </div>
+        </section>
+
+        <section className="projects-stats-grid">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="project-stat-card placeholder-glow">
+              <div className="stat-top">
+                <span className="placeholder col-6" style={{ height: "14px", borderRadius: "4px" }}></span>
+                <span className="stat-icon-wrap placeholder"></span>
+              </div>
+              <div className="stat-number placeholder col-4 mt-2" style={{ height: "30px", borderRadius: "6px" }}></div>
+              <div className="stat-subtext placeholder col-8 mt-2" style={{ height: "12px", borderRadius: "4px" }}></div>
+            </div>
+          ))}
+        </section>
+
+        <div className="loading-state py-4 text-center">
+          <div className="loading-spinner mb-2"></div>
+          <span className="text-muted small">Loading project data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="projects-overview-pane">
+        <div className="alert alert-danger d-flex align-items-center justify-content-between">
+          <span>{error}</span>
+          {onRetry && (
+            <button type="button" className="btn btn-outline-danger btn-sm" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="projects-overview-pane">

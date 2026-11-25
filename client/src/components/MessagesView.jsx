@@ -11,11 +11,29 @@ import {
   Shield,
   Check,
   CheckCheck,
-  AlertCircle
+  AlertCircle,
+  Clock
 } from "lucide-react";
 import { io } from "socket.io-client";
-import { api } from "../services/api";
+import { api, SERVER_ORIGIN, getToken } from "../services/api";
 import { MessageInboxSkeleton, ConversationSkeleton } from "./Skeletons";
+
+function getEntityId(entity) {
+  if (!entity) return "";
+  if (typeof entity === "string") return entity;
+  return String(entity._id || entity.id || "");
+}
+
+function isMessageFromMe(msg, currentUser) {
+  const currentUserId = getEntityId(currentUser);
+  if (!currentUserId) return false;
+
+  const senderId = getEntityId(msg?.senderId) || getEntityId(msg?.sender);
+  if (senderId) {
+    return senderId === currentUserId;
+  }
+  return false;
+}
 
 function formatMessageTime(dateString) {
   if (!dateString) return "";
@@ -84,8 +102,11 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
 
   // Composer
   const [messageText, setMessageText] = useState("");
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+
+  // Typing state
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
 
   // New message modal state
   const [showNewModal, setShowNewModal] = useState(false);
@@ -105,6 +126,18 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
   const socketRef = useRef(null);
   const textareaRef = useRef(null);
 
+  const activeConversationIdRef = useRef(activeConversationId);
+  const currentUserRef = useRef(currentUser);
+  const prevActiveConvRef = useRef(null);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   // Direct internal scroll without moving the window or parent layout
   const scrollToBottom = (behavior = "smooth") => {
     if (!chatScrollRef.current) return;
@@ -121,80 +154,146 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
     isNearBottomRef.current = distanceFromBottom < 120;
   };
 
-  // 1. Initialize Socket.IO connection
+  // 1. Initialize persistent Socket.IO connection
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_API_URL
-      ? import.meta.env.VITE_API_URL.replace(/\/api.*$/, "")
-      : "http://localhost:4000";
+    const socketUrl = SERVER_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
+    const token = getToken();
 
     const socket = io(socketUrl, {
+      auth: { token },
       withCredentials: true,
-      transports: ["websocket", "polling"]
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1000
     });
 
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      // Connected
+      // Re-join current active conversation room on connect / reconnect
+      if (activeConversationIdRef.current) {
+        socket.emit("join_conversation", activeConversationIdRef.current);
+      }
     });
 
     socket.on("new_message", ({ conversationId, message }) => {
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conversationId
-            ? {
-                ...c,
-                lastMessage: message.content,
-                lastMessageAt: message.createdAt,
-                lastMessageSenderId: message.sender?.id
-              }
-            : c
-        )
-      );
+      const activeId = activeConversationIdRef.current;
+      const isCurrentConv = activeId === conversationId;
+      const senderId = getEntityId(message.senderId || message.sender);
 
-      if (conversationId === activeConversationId) {
+      // 1. Update conversations list preview and elevate conversation to top
+      setConversations((prev) => {
+        const targetConv = prev.find((c) => c.id === conversationId);
+        if (!targetConv) {
+          loadConversations();
+          return prev;
+        }
+        const updated = {
+          ...targetConv,
+          lastMessage: message.content,
+          lastMessageAt: message.createdAt,
+          lastMessageSenderId: senderId,
+          unreadCount: isCurrentConv ? 0 : (targetConv.unreadCount || 0) + 1
+        };
+        return [updated, ...prev.filter((c) => c.id !== conversationId)];
+      });
+
+      // 2. If this conversation is currently open, append message
+      if (isCurrentConv) {
         setMessages((prev) => {
+          // If already present by real server id, return prev
           if (prev.some((m) => m.id === message.id)) return prev;
-          return [...prev, message];
+
+          // If this is our own message arriving via socket while optimistic send is in-flight, replace the temp message
+          const myId = getEntityId(currentUserRef.current);
+          if (senderId === myId) {
+            const pendingIndex = prev.findIndex(
+              (m) => (m.status === "sending" || m.clientTempId) && m.content === message.content
+            );
+            if (pendingIndex !== -1) {
+              const updated = [...prev];
+              updated[pendingIndex] = { ...message, status: "sent" };
+              return updated;
+            }
+          }
+
+          return [...prev, { ...message, status: "sent" }];
         });
+
+        // Clear typing indicator for current conversation
+        setPartnerTyping(false);
 
         // Only auto-scroll if user is near bottom
         if (isNearBottomRef.current) {
           setTimeout(() => scrollToBottom("smooth"), 40);
         }
 
-        // Mark as read immediately since conversation is open
+        // Mark as read immediately on backend since conversation is open
         api(`/conversations/${conversationId}/read`, { method: "POST" }).catch(() => {});
       }
     });
 
     socket.on("inbox_update", ({ conversationId, message }) => {
+      const activeId = activeConversationIdRef.current;
+      if (activeId === conversationId) return; // Handled by new_message
+
       setConversations((prev) => {
-        const exists = prev.some((c) => c.id === conversationId);
-        if (exists) {
-          return prev.map((c) => {
-            if (c.id === conversationId) {
-              const inc = activeConversationId === conversationId ? 0 : 1;
-              return {
-                ...c,
-                lastMessage: message.content,
-                lastMessageAt: message.createdAt,
-                lastMessageSenderId: message.sender?.id,
-                unreadCount: (c.unreadCount || 0) + inc
-              };
-            }
-            return c;
-          });
+        const targetConv = prev.find((c) => c.id === conversationId);
+        if (!targetConv) {
+          loadConversations();
+          return prev;
         }
-        // If brand new conversation initiated by someone else, reload inbox
-        loadConversations();
-        return prev;
+        const updated = {
+          ...targetConv,
+          lastMessage: message.content,
+          lastMessageAt: message.createdAt,
+          lastMessageSenderId: getEntityId(message.senderId || message.sender),
+          unreadCount: (targetConv.unreadCount || 0) + 1
+        };
+        return [updated, ...prev.filter((c) => c.id !== conversationId)];
       });
     });
 
+    socket.on("messages_read", ({ conversationId }) => {
+      const activeId = activeConversationIdRef.current;
+      if (activeId === conversationId) {
+        // Mark all outgoing messages in active conversation as read
+        setMessages((prev) =>
+          prev.map((m) => (m.read ? m : { ...m, read: true }))
+        );
+      }
+    });
+
+    socket.on("user_typing", ({ conversationId, userId, isTyping }) => {
+      const activeId = activeConversationIdRef.current;
+      const myId = getEntityId(currentUserRef.current);
+      if (activeId === conversationId && String(userId) !== myId) {
+        setPartnerTyping(Boolean(isTyping));
+      }
+    });
+
     return () => {
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
     };
+  }, []);
+
+  // Manage room subscription when switching active conversation
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+    setPartnerTyping(false);
+
+    if (socketRef.current && socketRef.current.connected) {
+      if (prevActiveConvRef.current && prevActiveConvRef.current !== activeConversationId) {
+        socketRef.current.emit("leave_conversation", prevActiveConvRef.current);
+      }
+      if (activeConversationId) {
+        socketRef.current.emit("join_conversation", activeConversationId);
+      }
+    }
+    prevActiveConvRef.current = activeConversationId;
   }, [activeConversationId]);
 
   // 2. Load conversations list
@@ -229,16 +328,22 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
     setMobileShowChat(true);
     setLoadingMessages(true);
     setSendError("");
+    setPartnerTyping(false);
 
     // Join room via socket
-    if (socketRef.current) {
+    if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit("join_conversation", convId);
     }
 
     try {
       const res = await api(`/conversations/${convId}/messages`);
-      setMessages(res?.data?.messages || []);
-      // Mark read
+      const loadedMessages = (res?.data?.messages || []).map((m) => ({
+        ...m,
+        status: "sent"
+      }));
+      setMessages(loadedMessages);
+
+      // Mark read on backend
       await api(`/conversations/${convId}/read`, { method: "POST" });
       setConversations((prev) =>
         prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c))
@@ -255,57 +360,143 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
     }
   }
 
-  // 4. Send message
+  // 4. Send message with Optimistic UI & WhatsApp responsiveness
   async function handleSendMessage(e) {
     if (e) e.preventDefault();
     const text = messageText.trim();
-    if (!text || sending || !activeConversationId) return;
+    if (!text || !activeConversationId) return;
 
-    setSending(true);
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const currentUserId = getEntityId(currentUser);
+    const nowIso = new Date().toISOString();
+
+    const optimisticMsg = {
+      id: tempId,
+      clientTempId: tempId,
+      conversationId: activeConversationId,
+      content: text,
+      senderId: currentUserId,
+      sender: {
+        id: currentUserId,
+        username: currentUser?.username || "You",
+        displayName: currentUser?.displayName || currentUser?.username || "You",
+        avatar: currentUser?.avatar || { url: "", publicId: "" }
+      },
+      status: "sending",
+      read: false,
+      readAt: null,
+      createdAt: nowIso
+    };
+
+    // 1. Immediately append optimistic message
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setMessageText("");
     setSendError("");
 
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    // Stop typing indicator immediately
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("typing", { conversationId: activeConversationId, isTyping: false });
+    }
+
+    // 2. Immediately update conversation preview in sidebar and move conversation to top
+    setConversations((prev) => {
+      const targetConv = prev.find((c) => c.id === activeConversationId);
+      if (!targetConv) return prev;
+      const updated = {
+        ...targetConv,
+        lastMessage: text,
+        lastMessageAt: nowIso,
+        lastMessageSenderId: currentUserId
+      };
+      return [updated, ...prev.filter((c) => c.id !== activeConversationId)];
+    });
+
+    // 3. Smooth scroll to bottom
+    isNearBottomRef.current = true;
+    setTimeout(() => scrollToBottom("smooth"), 20);
+
+    // Keep focus without jumping the viewport
+    if (textareaRef.current) {
+      try {
+        textareaRef.current.focus({ preventScroll: true });
+      } catch {}
+    }
+
+    // 4. Send API request
     try {
       const res = await api(`/conversations/${activeConversationId}/messages`, {
         method: "POST",
         body: JSON.stringify({ content: text })
       });
 
-      const sentMsg = res?.data?.message;
-      if (sentMsg) {
+      const serverMsg = res?.data?.message;
+      if (serverMsg) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === sentMsg.id)) return prev;
-          return [...prev, sentMsg];
-        });
-        setMessageText("");
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === activeConversationId
-              ? {
-                  ...c,
-                  lastMessage: text,
-                  lastMessageAt: new Date().toISOString(),
-                  lastMessageSenderId: currentUser.id
-                }
-              : c
-          )
-        );
-        // Scroll strictly inside chat container smoothly
-        isNearBottomRef.current = true;
-        setTimeout(() => scrollToBottom("smooth"), 20);
-
-        // Keep focus without scrolling the window
-        if (textareaRef.current) {
-          try {
-            textareaRef.current.focus({ preventScroll: true });
-          } catch {
-            // Fallback for older browsers
+          // If the socket event already added or updated this message with the real server id, remove duplicate temp
+          if (prev.some((m) => m.id === serverMsg.id && m.id !== tempId)) {
+            return prev.filter((m) => m.id !== tempId && m.clientTempId !== tempId);
           }
-        }
+          return prev.map((m) =>
+            m.id === tempId || m.clientTempId === tempId
+              ? { ...serverMsg, status: "sent", clientTempId: tempId }
+              : m
+          );
+        });
       }
     } catch (err) {
-      setSendError(err.message || "Failed to send message.");
-    } finally {
-      setSending(false);
+      // Mark optimistic message as failed with retry action
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId || m.clientTempId === tempId
+            ? { ...m, status: "failed", error: err.message || "Failed to send" }
+            : m
+        )
+      );
+      setSendError(err.message || "Failed to send message. Click Retry to resend.");
+    }
+  }
+
+  // Retry sending a failed message
+  async function handleRetryMessage(failedMsg) {
+    if (!failedMsg || !activeConversationId) return;
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === failedMsg.id ? { ...m, status: "sending", error: null } : m
+      )
+    );
+    setSendError("");
+
+    try {
+      const res = await api(`/conversations/${activeConversationId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content: failedMsg.content })
+      });
+
+      const serverMsg = res?.data?.message;
+      if (serverMsg) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === failedMsg.id
+              ? { ...serverMsg, status: "sent" }
+              : m
+          )
+        );
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === failedMsg.id
+            ? { ...m, status: "failed", error: err.message || "Failed to send" }
+            : m
+        )
+      );
+      setSendError(err.message || "Failed to send message. Click Retry to resend.");
     }
   }
 
@@ -315,6 +506,24 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
       handleSendMessage();
     }
   }
+
+  const handleTextareaChange = (e) => {
+    setMessageText(e.target.value);
+    e.target.style.height = "auto";
+    const nextHeight = Math.min(e.target.scrollHeight, 120);
+    e.target.style.height = `${nextHeight}px`;
+
+    // Emit typing event debounced
+    if (socketRef.current && socketRef.current.connected && activeConversationId) {
+      socketRef.current.emit("typing", { conversationId: activeConversationId, isTyping: true });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        if (socketRef.current && socketRef.current.connected && activeConversationId) {
+          socketRef.current.emit("typing", { conversationId: activeConversationId, isTyping: false });
+        }
+      }, 2000);
+    }
+  };
 
   // 5. Open/Create conversation with a specific user
   async function openConversationWithUser(targetUserId) {
@@ -496,7 +705,7 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
                       </div>
                       <div className="conv-bottom-row">
                         <span className="conv-last-msg">
-                          {conv.lastMessageSenderId === currentUser.id && "You: "}
+                          {getEntityId(conv.lastMessageSenderId) === getEntityId(currentUser) && "You: "}
                           {conv.lastMessage || <em className="muted">Conversation started</em>}
                         </span>
                         {hasUnread && (
@@ -575,22 +784,29 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
                 ) : (
                   <div className="messages-list-flow">
                     {messages.map((msg, index) => {
-                      const isMe = msg.isMine || msg.sender?.id === currentUser.id;
+                      const isMe = isMessageFromMe(msg, currentUser);
                       const prevMsg = index > 0 ? messages[index - 1] : null;
                       const showDateSep = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
+                      const prevSenderId = getEntityId(prevMsg?.senderId || prevMsg?.sender);
+                      const currentMsgSenderId = getEntityId(msg?.senderId || msg?.sender);
                       const isConsecutive =
                         prevMsg &&
                         !showDateSep &&
-                        (prevMsg.sender?.id || prevMsg.sender) === (msg.sender?.id || msg.sender);
+                        prevSenderId === currentMsgSenderId;
+
+                      const isSending = msg.status === "sending";
+                      const isFailed = msg.status === "failed";
 
                       return (
-                        <React.Fragment key={msg.id}>
+                        <React.Fragment key={msg.id || msg.clientTempId || index}>
                           {showDateSep && (
                             <div className="chat-date-separator">
                               <span>{formatMessageDateSeparator(msg.createdAt)}</span>
                             </div>
                           )}
-                          <div className={`chat-message-row ${isMe ? "me" : "them"} ${isConsecutive ? "consecutive" : ""}`}>
+                          <div
+                            className={`chat-message-row ${isMe ? "me" : "them"} ${isConsecutive ? "consecutive" : ""} ${isFailed ? "failed" : ""}`}
+                          >
                             {!isMe && !isConsecutive && (
                               <div className="chat-bubble-avatar">
                                 {(msg.sender?.displayName || msg.sender?.username || "U").slice(0, 1).toUpperCase()}
@@ -604,8 +820,35 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
                               <div className="chat-bubble-footer">
                                 <span className="msg-time">{formatMessageTime(msg.createdAt)}</span>
                                 {isMe && (
-                                  <span className="msg-read-status ms-1" title={msg.read ? "Read" : "Delivered"}>
-                                    {msg.read ? <CheckCheck size={12} /> : <Check size={12} />}
+                                  <span className="msg-status-indicator ms-1">
+                                    {isSending && (
+                                      <span title="Sending...">
+                                        <Clock size={11} className="msg-status-icon msg-sending" />
+                                      </span>
+                                    )}
+                                    {isFailed && (
+                                      <button
+                                        type="button"
+                                        className="btn-retry-message"
+                                        onClick={() => handleRetryMessage(msg)}
+                                        title="Message failed to send. Click to retry."
+                                      >
+                                        <AlertCircle size={11} />
+                                        <span>Retry</span>
+                                      </button>
+                                    )}
+                                    {!isSending && !isFailed && (
+                                      <span
+                                        className="msg-status-checks"
+                                        title={msg.read ? "Read" : "Sent"}
+                                      >
+                                        {msg.read ? (
+                                          <CheckCheck size={12} className="msg-read-check" />
+                                        ) : (
+                                          <Check size={12} className="msg-sent-check" />
+                                        )}
+                                      </span>
+                                    )}
                                   </span>
                                 )}
                               </div>
@@ -614,6 +857,18 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
                         </React.Fragment>
                       );
                     })}
+                    {partnerTyping && (
+                      <div className="chat-typing-row">
+                        <div className="chat-typing-indicator">
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-text ms-2">
+                            {activeConv.otherParticipant?.displayName || activeConv.otherParticipant?.username || "User"} is typing...
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -632,17 +887,16 @@ export default function MessagesView({ currentUser, onBackToFeed, initialTargetU
                   <textarea
                     ref={textareaRef}
                     className="chat-composer-textarea"
-                    placeholder={`Message @${activeConv.otherParticipant?.username}... (Enter to send, Shift+Enter for newline)`}
+                    placeholder={`Message @${activeConv.otherParticipant?.username || "user"}... (Enter to send, Shift+Enter for newline)`}
                     rows={1}
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={handleTextareaChange}
                     onKeyDown={handleKeyDown}
-                    disabled={sending}
                   />
                   <button
                     type="submit"
                     className="btn-send-message"
-                    disabled={!messageText.trim() || sending}
+                    disabled={!messageText.trim()}
                     title="Send message (Enter)"
                   >
                     <Send size={15} strokeWidth={2.4} />

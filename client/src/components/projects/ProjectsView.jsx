@@ -161,6 +161,9 @@ export default function ProjectsView({
           <ProjectsOverview
             myProjects={myProjects}
             invitations={invitations}
+            loading={loading}
+            error={error}
+            onRetry={loadInitialData}
             onNavigate={(targetSection) => setSection(targetSection)}
             onOpenCreate={() => setIsCreateModalOpen(true)}
             onSelectProject={handleSelectProject}

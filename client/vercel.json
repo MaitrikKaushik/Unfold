@@ -5,6 +5,14 @@
       "destination": "https://unfold-qaue.onrender.com/api/:path*"
     },
     {
+      "source": "/uploads/:path*",
+      "destination": "https://unfold-qaue.onrender.com/uploads/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://unfold-qaue.onrender.com/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

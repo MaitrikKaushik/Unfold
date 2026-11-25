@@ -1,6 +1,10 @@
+const PRODUCTION_ORIGIN = "https://unfold-qaue.onrender.com";
+const PRODUCTION_API_URL = `${PRODUCTION_ORIGIN}/api/v1`;
+const LOCAL_DEV_API_URL = "http://localhost:4000/api/v1";
+
 function normalizeApiUrl(rawUrl) {
-  if (!rawUrl) {
-    return import.meta.env.PROD ? "/api/v1" : "http://localhost:4000/api/v1";
+  if (!rawUrl || !rawUrl.trim()) {
+    return import.meta.env.PROD ? PRODUCTION_API_URL : LOCAL_DEV_API_URL;
   }
   const clean = rawUrl.trim().replace(/\/+$/, "");
   if (clean.endsWith("/api/v1")) return clean;
@@ -9,11 +13,11 @@ function normalizeApiUrl(rawUrl) {
 }
 
 const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
-const API = normalizeApiUrl(configuredApiUrl);
+export const API = normalizeApiUrl(configuredApiUrl);
 
 export const SERVER_ORIGIN = API.startsWith("http")
-  ? API.replace(/\/api\/v1\/?$/, "")
-  : "";
+  ? API.replace(/\/api(\/v1)?\/?$/, "")
+  : (import.meta.env.PROD ? PRODUCTION_ORIGIN : "http://localhost:4000");
 
 export function getToken() {
   try {

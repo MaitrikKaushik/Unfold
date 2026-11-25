@@ -236,6 +236,7 @@ export async function sendMessage(conversationId, senderId, content) {
     message: {
       id: String(message._id),
       conversationId: String(message.conversationId),
+      senderId: String(sender._id),
       sender: {
         id: String(sender._id),
         username: sender.username,
@@ -243,7 +244,6 @@ export async function sendMessage(conversationId, senderId, content) {
         avatar: sender.avatar || { url: "", publicId: "" }
       },
       content: message.content,
-      isMine: true,
       read: false,
       readAt: null,
       createdAt: message.createdAt

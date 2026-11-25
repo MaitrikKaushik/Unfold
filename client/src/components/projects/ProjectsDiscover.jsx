@@ -55,6 +55,17 @@ export default function ProjectsDiscover({ onSelectProject, onRequestJoinSuccess
     return () => clearTimeout(timer);
   }, [fetchDiscoverProjects]);
 
+  useEffect(() => {
+    if (!joinModalProject) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        setJoinModalProject(null);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [joinModalProject]);
+
   async function handleSendJoinRequest(e) {
     e.preventDefault();
     if (!joinModalProject) return;

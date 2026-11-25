@@ -860,6 +860,27 @@ export async function respondToJoinRequest(invitationId, responderId, action) {
   }
 }
 
+export async function withdrawJoinRequest(invitationId, userId) {
+  const joinRequest = await ProjectInvitation.findOne({
+    _id: invitationId,
+    inviteeId: userId,
+    type: "join_request",
+    status: "pending"
+  });
+
+  if (!joinRequest) {
+    const error = new Error("Pending join application not found or cannot be withdrawn.");
+    error.status = 404;
+    throw error;
+  }
+
+  joinRequest.status = "canceled";
+  joinRequest.respondedAt = new Date();
+  await joinRequest.save();
+
+  return { success: true, status: "canceled", message: "Application withdrawn." };
+}
+
 export async function listProjectMembers(projectId) {
   const memberships = await ProjectMembership.find({
     projectId,

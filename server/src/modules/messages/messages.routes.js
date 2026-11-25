@@ -10,7 +10,7 @@ import {
   markConversationAsRead,
   getTotalUnreadCount
 } from "./messages.service.js";
-import { broadcastNewMessage } from "./messages.socket.js";
+import { broadcastNewMessage, broadcastMessagesRead } from "./messages.socket.js";
 
 const router = express.Router();
 
@@ -90,6 +90,7 @@ router.post("/conversations/:id/messages", messageSendLimiter, asyncRoute(async 
 
 router.post("/conversations/:id/read", asyncRoute(async (req, res) => {
   await markConversationAsRead(req.params.id, req.user.id);
+  broadcastMessagesRead(req.params.id, req.user.id);
   return res.json({
     success: true,
     message: "Conversation marked as read."
