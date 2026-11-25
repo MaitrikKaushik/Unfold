@@ -8,7 +8,8 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
-  Loader2
+  Loader2,
+  FolderKanban
 } from "lucide-react";
 
 export default function ExploreView({
@@ -17,7 +18,8 @@ export default function ExploreView({
   onSelectCommunity,
   onJoinCommunity,
   getCommunityIcon,
-  currentUser
+  currentUser,
+  onNavigateToProjects
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all"); // "all" | "popular" | "recent" | "joined"
@@ -98,6 +100,31 @@ export default function ExploreView({
             Find your people. Discover ideas. Build knowledge.
           </p>
         </div>
+
+        {onNavigateToProjects && (
+          <div
+            className="explore-projects-cta-card mt-3"
+            onClick={onNavigateToProjects}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="d-flex align-items-center gap-3">
+              <div className="explore-projects-icon-wrap">
+                <FolderKanban size={20} strokeWidth={2.2} />
+              </div>
+              <div>
+                <strong>Community Projects</strong>
+                <p className="m-0 text-muted small">
+                  Collaborate on initiatives, coordinate tasks on Kanban boards, and build real-world work.
+                </p>
+              </div>
+            </div>
+            <button type="button" className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
+              <span>Explore Projects</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        )}
       </header>
 
       {/* 2. COMMUNITY SEARCH */}

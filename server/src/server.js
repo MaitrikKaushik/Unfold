@@ -12,6 +12,7 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import moderationRoutes from "./modules/moderation/moderation.routes.js";
 import postsRoutes from "./modules/posts/posts.routes.js";
 import messagesRoutes from "./modules/messages/messages.routes.js";
+import projectsRoutes from "./modules/projects/projects.routes.js";
 import { setupSocketIO } from "./modules/messages/messages.socket.js";
 import { connectMongo, isMongoReady } from "./config/mongo.js";
 import { initialisePostgres, postgresPool, closePostgres } from "./config/postgres.js";
@@ -115,7 +116,9 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1", moderationRoutes);
 app.use("/api/v1", postsRoutes);
 app.use("/api/v1", messagesRoutes);
+app.use("/api/v1", projectsRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api", projectsRoutes);
 app.use("/api/v1", legacyRoutes);
 app.use("/api", legacyRoutes);
 

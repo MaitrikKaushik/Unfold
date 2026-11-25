@@ -28,7 +28,8 @@ import {
   Edit3,
   Lock,
   Clock,
-  ArrowRight
+  ArrowRight,
+  FolderKanban
 } from "lucide-react";
 import AuthPanel from "./components/AuthPanel";
 import PostCard from "./components/PostCard";
@@ -36,6 +37,8 @@ import ProfileView from "./components/ProfileView";
 import AccountSettingsView from "./components/AccountSettingsView";
 import MessagesView from "./components/MessagesView";
 import ExploreView from "./components/ExploreView";
+import ProjectsView from "./components/projects/ProjectsView";
+import NotificationsModal from "./components/NotificationsModal";
 import UnfoldLogo from "./components/UnfoldLogo";
 import { api, clearSession, hasCachedUser, getUser } from "./services/api";
 
@@ -51,9 +54,12 @@ function getCommunityIcon(slugOrName, size = 16) {
 
 export default function App() {
   const [user, setUser] = useState(getUser());
-  const [activeView, setActiveView] = useState("feed"); // "feed" | "explore" | "profile" | "settings" | "messages"
-  const [activeNav, setActiveNav] = useState("workspace_feed"); // "workspace_feed" | "explore" | "community_<id>" | "profile" | "settings" | "messages"
+  const [activeView, setActiveView] = useState("feed"); // "feed" | "explore" | "profile" | "settings" | "messages" | "projects"
+  const [activeNav, setActiveNav] = useState("workspace_feed"); // "workspace_feed" | "explore" | "projects" | "community_<id>" | "profile" | "settings" | "messages"
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [activeProjectId, setActiveProjectId] = useState(null);
   const [communities, setCommunities] = useState([]);
   const [communityId, setCommunityId] = useState("general");
   const [posts, setPosts] = useState([]);
@@ -115,11 +121,18 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setUnreadMessages(0);
+      setUnreadNotifications(0);
       return;
     }
     api("/conversations/unread")
       .then((res) => {
         setUnreadMessages(res?.data?.unreadTotal || 0);
+      })
+      .catch(() => {});
+
+    api("/notifications/unread-count")
+      .then((res) => {
+        setUnreadNotifications(res?.unreadCount || 0);
       })
       .catch(() => {});
   }, [user, activeView]);
@@ -375,6 +388,22 @@ export default function App() {
 
           <button
             type="button"
+            className={`nav-rail-item ${activeNav === "projects" && activeView === "projects" ? "active" : ""}`}
+            onClick={() => {
+              setActiveView("projects");
+              setActiveNav("projects");
+              setActiveProjectId(null);
+              setNotice("");
+            }}
+            aria-label="Community Projects"
+            title="Projects"
+          >
+            <FolderKanban size={20} strokeWidth={2.2} />
+            <span className="tooltip-text">Projects</span>
+          </button>
+
+          <button
+            type="button"
             className={`nav-rail-item ${activeView === "messages" ? "active" : ""}`}
             onClick={() => {
               setActiveView("messages");
@@ -392,10 +421,12 @@ export default function App() {
           <button
             type="button"
             className="nav-rail-item"
-            disabled
-            aria-label="Notifications (Coming soon)"
+            onClick={() => setIsNotificationsOpen(true)}
+            aria-label="Notifications"
+            title="Notifications"
           >
             <Bell size={20} strokeWidth={2.2} />
+            {unreadNotifications > 0 && <span className="rail-badge">{unreadNotifications}</span>}
             <span className="tooltip-text">Notifications</span>
           </button>
         </div>
@@ -465,6 +496,22 @@ export default function App() {
               <Compass size={16} strokeWidth={2.2} />
             </span>
             <span>Explore Communities</span>
+          </button>
+
+          <button
+            type="button"
+            className={`community-sidebar-item ${activeNav === "projects" && activeView === "projects" ? "active" : ""}`}
+            onClick={() => {
+              setActiveNav("projects");
+              setActiveView("projects");
+              setActiveProjectId(null);
+              setNotice("");
+            }}
+          >
+            <span className="sidebar-item-icon">
+              <FolderKanban size={16} strokeWidth={2.2} />
+            </span>
+            <span>Projects</span>
           </button>
         </div>
 
@@ -548,7 +595,7 @@ export default function App() {
           3. MAIN CONTENT WORKSPACE (DOMINANT CENTRAL FEED, 60-65%)
           A. Community Header | B. Highlights | C. Collapsible Composer | D. Tabs | E. Feed
           ================================================================ */}
-      <main className={`main-content ${["profile", "settings", "messages"].includes(activeView) ? "full-width-content" : ""} ${activeView === "messages" ? "messages-main-mode" : ""}`}>
+      <main className={`main-content ${["profile", "settings", "messages", "projects"].includes(activeView) ? "full-width-content" : ""} ${activeView === "messages" ? "messages-main-mode" : ""}`}>
         {notice && (
           <div className="alert alert-success">
             <span>{notice}</span>
@@ -618,6 +665,17 @@ export default function App() {
             onJoinCommunity={handleJoinCommunity}
             getCommunityIcon={getCommunityIcon}
             currentUser={user}
+            onNavigateToProjects={() => {
+              setActiveView("projects");
+              setActiveNav("projects");
+              setActiveProjectId(null);
+            }}
+          />
+        ) : activeView === "projects" ? (
+          <ProjectsView
+            currentUser={user}
+            communities={communities}
+            initialProjectId={activeProjectId}
           />
         ) : (
           <>
@@ -1246,6 +1304,22 @@ export default function App() {
           <span>Settings</span>
         </button>
       </nav>
+
+      {/* Notifications Flyout Modal */}
+      <NotificationsModal
+        isOpen={isNotificationsOpen}
+        onClose={() => {
+          setIsNotificationsOpen(false);
+          api("/notifications/unread-count")
+            .then((res) => setUnreadNotifications(res?.unreadCount || 0))
+            .catch(() => {});
+        }}
+        onNavigateToProject={(projId) => {
+          setActiveProjectId(projId);
+          setActiveView("projects");
+          setActiveNav("projects");
+        }}
+      />
     </div>
   );
 }

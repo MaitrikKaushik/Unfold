@@ -86,6 +86,18 @@ export function setupSocketIO(server, allowedOrigins) {
       socket.leave(`conversation:${conversationId}`);
     });
 
+    socket.on("join_project", (projectId) => {
+      if (projectId) {
+        socket.join(`project:${projectId}`);
+      }
+    });
+
+    socket.on("leave_project", (projectId) => {
+      if (projectId) {
+        socket.leave(`project:${projectId}`);
+      }
+    });
+
     socket.on("typing", ({ conversationId, isTyping }) => {
       socket.to(`conversation:${conversationId}`).emit("user_typing", {
         conversationId,
