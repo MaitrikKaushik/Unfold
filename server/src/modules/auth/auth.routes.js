@@ -3,7 +3,19 @@ import rateLimit from "express-rate-limit";
 import { asyncRoute } from "../../utils/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import User from "../../models/User.js";
-import { authenticateUser, createAccessToken, publicUser, registerUser, generateUniqueUsername } from "./auth.service.js";
+import {
+  authenticateUser,
+  createAccessToken,
+  publicUser,
+  registerUser,
+  generateUniqueUsername,
+  updatePassword,
+  updateSettings,
+  blockUser,
+  unblockUser,
+  getBlockedUsers,
+  searchUsers
+} from "./auth.service.js";
 import logger from "../../config/logger.js";
 
 const router = express.Router();
@@ -68,7 +80,8 @@ router.post("/register", authLimiter, asyncRoute(async (req, res) => {
   return res.status(201).json({
     success: true,
     message: "Your Unfold account has been created.",
-    data: { user: publicUser(user) },
+    token,
+    data: { user: publicUser(user), token },
     user: publicUser(user)
   });
 }));
@@ -78,7 +91,13 @@ router.post("/login", authLimiter, asyncRoute(async (req, res) => {
   const token = createAccessToken(user);
   setSessionCookie(res, token);
   logger.info("User logged in", { userId: String(user._id) });
-  return res.json({ success: true, message: "Welcome back to Unfold.", data: { user: publicUser(user) }, user: publicUser(user) });
+  return res.json({
+    success: true,
+    message: "Welcome back to Unfold.",
+    token,
+    data: { user: publicUser(user), token },
+    user: publicUser(user)
+  });
 }));
 
 router.post("/logout", requireAuth, asyncRoute(async (req, res) => {
@@ -111,6 +130,39 @@ router.patch("/profile", requireAuth, asyncRoute(async (req, res) => {
 
   const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true, runValidators: true });
   return res.json({ success: true, message: "Profile updated successfully.", data: { user: publicUser(user) }, user: publicUser(user) });
+}));
+
+router.patch("/settings", requireAuth, asyncRoute(async (req, res) => {
+  const { email, preferences } = req.body || {};
+  const user = await updateSettings({ userId: req.user.id, email, preferences });
+  return res.json({ success: true, message: "Settings updated successfully.", data: { user: publicUser(user) }, user: publicUser(user) });
+}));
+
+router.post("/password", requireAuth, asyncRoute(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  await updatePassword({ userId: req.user.id, currentPassword, newPassword });
+  return res.json({ success: true, message: "Your password has been changed successfully." });
+}));
+
+router.get("/blocked", requireAuth, asyncRoute(async (req, res) => {
+  const blocked = await getBlockedUsers(req.user.id);
+  return res.json({ success: true, data: { blocked } });
+}));
+
+router.post("/block/:id", requireAuth, asyncRoute(async (req, res) => {
+  const result = await blockUser(req.user.id, req.params.id);
+  return res.json({ success: true, message: result.message });
+}));
+
+router.post("/unblock/:id", requireAuth, asyncRoute(async (req, res) => {
+  const result = await unblockUser(req.user.id, req.params.id);
+  return res.json({ success: true, message: result.message });
+}));
+
+router.get("/users/search", requireAuth, asyncRoute(async (req, res) => {
+  const query = req.query.q || req.query.term || "";
+  const users = await searchUsers(query, req.user.id);
+  return res.json({ success: true, data: { users } });
 }));
 
 export default router;

@@ -44,6 +44,7 @@ export function serializeCommunity(community) {
     description: community.description || "",
     cover: community.cover || { url: "", publicId: "" },
     memberCount: community.memberCount || 0,
+    createdAt: community.createdAt || null,
     isGeneral: false
   };
 }

@@ -95,11 +95,18 @@ export function publicUser(user) {
   return {
     id: String(user._id),
     username: user.username,
+    email: user.email || "",
     displayName: user.displayName || "",
     bio: user.bio || "",
     avatar: user.avatar || { url: "", publicId: "" },
     role: user.role,
     stats: user.stats,
+    preferences: user.preferences || {
+      theme: "light",
+      privacy: { directMessages: "everyone", profileVisibility: "public" },
+      notifications: { directMessages: true, communityActivity: true, accountUpdates: true }
+    },
+    blockedUsers: (user.blockedUsers || []).map(String),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
@@ -118,7 +125,7 @@ export function createAccessToken(user) {
   });
 }
 
-export async function registerUser({ password, displayName = "", username: requestedUsername = "", usernameDescription = "" }) {
+export async function registerUser({ password, displayName = "", username: requestedUsername = "", email = "", usernameDescription = "" }) {
   validatePassword(password);
   const cleanDisplayName = String(displayName || "").trim();
   if (cleanDisplayName.length > 40) {
@@ -137,29 +144,55 @@ export async function registerUser({ password, displayName = "", username: reque
     error.code = "INVALID_USERNAME";
     throw error;
   }
+
+  const cleanEmail = email ? String(email).trim().toLowerCase() : undefined;
+  if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    const error = new Error("Please enter a valid email address.");
+    error.status = 400;
+    error.code = "INVALID_EMAIL";
+    throw error;
+  }
+
   try {
-    return await User.create({ username, passwordHash, displayName: cleanDisplayName });
+    const userDoc = { username, passwordHash, displayName: cleanDisplayName };
+    if (cleanEmail) userDoc.email = cleanEmail;
+    return await User.create(userDoc);
   } catch (error) {
-    if (error?.code === 11000 && error?.keyPattern?.username) {
-      const conflict = new Error("That username was just taken. Generate another one.");
-      conflict.status = 409;
-      conflict.code = "USERNAME_TAKEN";
-      throw conflict;
+    if (error?.code === 11000) {
+      if (error?.keyPattern?.email) {
+        const conflict = new Error("An account with that email already exists.");
+        conflict.status = 409;
+        conflict.code = "EMAIL_TAKEN";
+        throw conflict;
+      }
+      if (error?.keyPattern?.username) {
+        const conflict = new Error("That username was just taken. Generate another one.");
+        conflict.status = 409;
+        conflict.code = "USERNAME_TAKEN";
+        throw conflict;
+      }
     }
     throw error;
   }
 }
 
 export async function authenticateUser({ username, password }) {
-  const normalizedUsername = String(username || "").trim().toLowerCase();
-  if (!normalizedUsername || typeof password !== "string" || !password) {
+  const identifier = String(username || "").trim();
+  if (!identifier || typeof password !== "string" || !password) {
     const error = new Error("Username and password are required.");
     error.status = 400;
     error.code = "MISSING_CREDENTIALS";
     throw error;
   }
 
-  const user = await User.findOne({ username: normalizedUsername }).select("+passwordHash +legacyId");
+  const normalized = identifier.toLowerCase();
+  const user = await User.findOne({
+    $or: [
+      { username: normalized },
+      { email: normalized }
+    ]
+  }).select("+passwordHash +legacyId");
+
   if (!user || user.status !== "active" || !(await bcrypt.compare(password, user.passwordHash))) {
     const error = new Error("Username or password is incorrect.");
     error.status = 401;
@@ -167,6 +200,167 @@ export async function authenticateUser({ username, password }) {
     throw error;
   }
   return user;
+}
+
+export async function updatePassword({ userId, currentPassword, newPassword }) {
+  if (!currentPassword || !newPassword) {
+    const error = new Error("Current password and new password are required.");
+    error.status = 400;
+    error.code = "MISSING_PASSWORD_FIELDS";
+    throw error;
+  }
+
+  validatePassword(newPassword);
+
+  const user = await User.findById(userId).select("+passwordHash");
+  if (!user) {
+    const error = new Error("User not found.");
+    error.status = 404;
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!isValid) {
+    const error = new Error("Current password is incorrect.");
+    error.status = 401;
+    error.code = "INVALID_CURRENT_PASSWORD";
+    throw error;
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+  return user;
+}
+
+export async function updateSettings({ userId, email, preferences }) {
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error("User not found.");
+    error.status = 404;
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  if (email !== undefined) {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (cleanEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        const error = new Error("Please enter a valid email address.");
+        error.status = 400;
+        error.code = "INVALID_EMAIL";
+        throw error;
+      }
+      const existing = await User.findOne({ email: cleanEmail, _id: { $ne: userId } });
+      if (existing) {
+        const conflict = new Error("An account with that email already exists.");
+        conflict.status = 409;
+        conflict.code = "EMAIL_TAKEN";
+        throw conflict;
+      }
+      user.email = cleanEmail;
+    } else {
+      user.email = undefined;
+    }
+  }
+
+  if (preferences && typeof preferences === "object") {
+    if (!user.preferences) user.preferences = {};
+    if (preferences.theme && ["light", "dark"].includes(preferences.theme)) {
+      user.preferences.theme = preferences.theme;
+    }
+    if (preferences.privacy && typeof preferences.privacy === "object") {
+      if (!user.preferences.privacy) user.preferences.privacy = {};
+      if (["everyone", "none"].includes(preferences.privacy.directMessages)) {
+        user.preferences.privacy.directMessages = preferences.privacy.directMessages;
+      }
+      if (["public", "members"].includes(preferences.privacy.profileVisibility)) {
+        user.preferences.privacy.profileVisibility = preferences.privacy.profileVisibility;
+      }
+    }
+    if (preferences.notifications && typeof preferences.notifications === "object") {
+      if (!user.preferences.notifications) user.preferences.notifications = {};
+      if (typeof preferences.notifications.directMessages === "boolean") {
+        user.preferences.notifications.directMessages = preferences.notifications.directMessages;
+      }
+      if (typeof preferences.notifications.communityActivity === "boolean") {
+        user.preferences.notifications.communityActivity = preferences.notifications.communityActivity;
+      }
+      if (typeof preferences.notifications.accountUpdates === "boolean") {
+        user.preferences.notifications.accountUpdates = preferences.notifications.accountUpdates;
+      }
+    }
+  }
+
+  await user.save();
+  return user;
+}
+
+export async function blockUser(userId, targetUserId) {
+  if (String(userId) === String(targetUserId)) {
+    const error = new Error("You cannot block yourself.");
+    error.status = 400;
+    error.code = "CANNOT_BLOCK_SELF";
+    throw error;
+  }
+
+  const target = await User.findById(targetUserId);
+  if (!target) {
+    const error = new Error("User to block not found.");
+    error.status = 404;
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  await User.updateOne(
+    { _id: userId },
+    { $addToSet: { blockedUsers: targetUserId } }
+  );
+
+  return { success: true, message: `Blocked @${target.username}` };
+}
+
+export async function unblockUser(userId, targetUserId) {
+  await User.updateOne(
+    { _id: userId },
+    { $pull: { blockedUsers: targetUserId } }
+  );
+  return { success: true, message: "User unblocked successfully." };
+}
+
+export async function getBlockedUsers(userId) {
+  const user = await User.findById(userId).populate("blockedUsers", "username displayName avatar");
+  return (user?.blockedUsers || []).map((u) => ({
+    id: String(u._id),
+    username: u.username,
+    displayName: u.displayName || u.username,
+    avatar: u.avatar || { url: "", publicId: "" }
+  }));
+}
+
+export async function searchUsers(query, excludeUserId) {
+  const term = String(query || "").trim();
+  if (!term || term.length < 2) return [];
+
+  const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const users = await User.find({
+    _id: { $ne: excludeUserId },
+    status: "active",
+    $or: [
+      { username: regex },
+      { displayName: regex }
+    ]
+  }).limit(10).lean();
+
+  return users.map((u) => ({
+    id: String(u._id),
+    username: u.username,
+    displayName: u.displayName || "",
+    bio: u.bio || "",
+    avatar: u.avatar || { url: "", publicId: "" },
+    stats: u.stats
+  }));
 }
 
 export { PASSWORD_MIN_LENGTH };

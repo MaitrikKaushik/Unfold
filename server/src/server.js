@@ -1,4 +1,5 @@
 import "dotenv/config";
+import http from "node:http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -10,6 +11,9 @@ import legacyRoutes from "./routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import moderationRoutes from "./modules/moderation/moderation.routes.js";
 import postsRoutes from "./modules/posts/posts.routes.js";
+import messagesRoutes from "./modules/messages/messages.routes.js";
+import projectsRoutes from "./modules/projects/projects.routes.js";
+import { setupSocketIO } from "./modules/messages/messages.socket.js";
 import { connectMongo, isMongoReady } from "./config/mongo.js";
 import { initialisePostgres, postgresPool, closePostgres } from "./config/postgres.js";
 import { connectRedis, redisClient, closeRedis } from "./config/redis.js";
@@ -35,22 +39,45 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.resolve(here, "../uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
 const clientOriginEnv = process.env.CLIENT_ORIGIN?.trim();
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4000",
+  "http://127.0.0.1:4000",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://unfold-two-sigma.vercel.app"
+];
 const allowedOrigins = clientOriginEnv
-  ? clientOriginEnv.split(",").map((origin) => origin.trim().replace(/\/+$/, ""))
-  : ["http://localhost:5173"];
+  ? [...new Set([...clientOriginEnv.split(",").map((o) => o.trim().replace(/\/+$/, "")), ...defaultOrigins])]
+  : defaultOrigins;
 
-app.disable("x-powered-by");
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  const clean = origin.replace(/\/+$/, "");
+  if (allowedOrigins.includes(clean)) return true;
+  // Allow Vercel preview and production deployments under vercel.app
+  if (/^https:\/\/unfold(-[a-z0-9_-]+)?\.vercel\.app$/i.test(clean)) return true;
+  return false;
+}
+
+const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ""))) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
     const error = new Error(`CORS origin not allowed: ${origin}`);
     error.status = 403;
     error.code = "CORS_ORIGIN_DENIED";
     return callback(error);
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+};
+
+app.disable("x-powered-by");
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // Cookie-based sessions are protected with SameSite cookies and an Origin check
 // for state-changing browser requests. Requests from non-browser clients that do not send an Origin header remain supported.
@@ -59,7 +86,7 @@ app.use((req, res, next) => {
   const origin = req.get("origin");
   if (!origin) return next();
   const normalizedOrigin = origin.replace(/\/+$/, "");
-  if (!allowedOrigins.includes(normalizedOrigin)) {
+  if (!isOriginAllowed(normalizedOrigin)) {
     return res.status(403).json({
       success: false,
       error: { code: "CSRF_ORIGIN_DENIED", message: "This request origin is not allowed." }
@@ -75,16 +102,8 @@ app.use(morgan("combined", {
   stream: { write: (message) => logger.info(message.trim(), { source: "http" }) }
 }));
 
-// Versioned API is the canonical integration base. /api remains a temporary
-// compatibility alias for deployed previews that use the original frontend.
-app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1", moderationRoutes);
-app.use("/api/v1", postsRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/v1", legacyRoutes);
-app.use("/api", legacyRoutes);
-
-app.get(["/api/v1/health", "/api/health"], (_req, res) => {
+// Health check endpoint (placed before route routers so it is never intercepted by auth middleware)
+app.get(["/api/v1/health", "/api/health", "/health"], (_req, res) => {
   res.json({
     success: true,
     app: "Unfold",
@@ -99,6 +118,18 @@ app.get(["/api/v1/health", "/api/health"], (_req, res) => {
     uptimeSeconds: Math.floor(process.uptime())
   });
 });
+
+// Versioned API is the canonical integration base. /api remains a temporary
+// compatibility alias for deployed previews that use the original frontend.
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1", moderationRoutes);
+app.use("/api/v1", postsRoutes);
+app.use("/api/v1", messagesRoutes);
+app.use("/api/v1", projectsRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api", projectsRoutes);
+app.use("/api/v1", legacyRoutes);
+app.use("/api", legacyRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "API endpoint not found." } });
@@ -140,7 +171,10 @@ async function start() {
     await connectRedis();
     configureCloudinary();
 
-    app.listen(port, () => logger.info(`Unfold API listening at http://localhost:${port}`));
+    const httpServer = http.createServer(app);
+    setupSocketIO(httpServer, allowedOrigins);
+
+    httpServer.listen(port, "0.0.0.0", () => logger.info(`Unfold API listening at http://0.0.0.0:${port}`));
   } catch (error) {
     logger.error("Unfold API startup failed", { message: error.message, stack: error.stack });
     process.exit(1);

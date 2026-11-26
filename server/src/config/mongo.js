@@ -6,9 +6,17 @@ export async function connectMongo() {
   if (!uri) throw new Error("MONGODB_URI is required. Configure MongoDB Atlas or a local MongoDB instance.");
 
   mongoose.set("strictQuery", true);
-  await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 10000)
-  });
+  try {
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 4000)
+    });
+  } catch (primaryErr) {
+    logger.warn("Primary MongoDB connection failed (check Atlas IP whitelist). Falling back to local MongoDB...", { error: primaryErr.message });
+    const fallbackUri = process.env.LOCAL_MONGODB_URI || "mongodb://127.0.0.1:27017/unfold";
+    await mongoose.connect(fallbackUri, {
+      serverSelectionTimeoutMS: 4000
+    });
+  }
   logger.info("MongoDB connected", { database: mongoose.connection.name });
   return mongoose.connection;
 }
